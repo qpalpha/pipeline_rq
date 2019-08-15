@@ -10,156 +10,19 @@ import os,sys
 import rqdatac as rq
 rq.init()
 from qp import *
-#from eq import *
+from qpc import *
 import warnings
 warnings.filterwarnings("ignore")
 import pdb
 
-#%% Global Variables
-EQDATAPATH = '/eq/share/lix/data'
+#%% Constant variables
+MINS_MB1 = np.hstack([925,np.array(pd.date_range(start='09:31:00',end='15:00:00',freq='min')\
+        .strftime('%H%M').astype(int))])
 
-#%% Class of GlobalVars
-class gvars():
-    '''
-    All feilds must be in STRING format!
-    '''
-    # Trade Dates
-    StartDate = '20060101'
-    TradeDateFile = os.path.join(EQDATAPATH,'tmp/trade.date.txt')
-    # Ids
-    IdFile = os.path.join(EQDATAPATH,'tmp/ids.txt')
-    IdComponets = ['AShareIndices','AShareStocks']
-    # Base ini
-    BaseIni = os.path.join(EQDATAPATH,'ini/cn.eq.base.ini')
+NEW_RULE_DATE_SH = 20180820
 
-#%% Class of Instruments
-class Instruments():
-    pass
-
-class AShareIndices(Instruments):
-    tickers = ['csi300',
-               'csi500',
-               'sse50',
-               'csi800'] 
-    tickers_sh = ['000300',
-                  '000905',
-                  '000016',
-                  '000906']
 #%% Functions
-def all_instruments()->list:
-    try:
-        with open(gvars.IdFile,'r') as f:instruments = f.read().splitlines()
-    except:
-        instruments = []
-    return instruments
-
-def all_ashare_index_instruments_sh()->dict:
-    instruments_db = AShareIndices().tickers
-    instruments_db_sh = AShareIndices().tickers_sh
-    instruments_all = all_instruments()
-    instruments = {id:id_sh for id,id_sh in zip(instruments_db,instruments_db_sh) if id in instruments_all}
-    return instruments
-
-def get_ids_rq():
-    # sh:'XSHG',sz:'XSHE'
-    d_ids = {''}
-    ids = all_instruments()
-    ids_index_dict = all_ashare_index_instruments_sh()
-    ids2 = [ids_index_dict[id] if id in ids_index_dict else id for id in ids]
-    ids_market = instruments_market(ids,sh='.XSHG',sz='.XSHE',idx='.XSHG')
-    ids_rq = [id+mkt for id,mkt in zip(ids2,ids_market)]
-    return ids_rq
-
-def yyyymmdd2yyyy_mm_dd(yyyymmdd):
-    return '-'.join([yyyymmdd[:4],yyyymmdd[4:6],yyyymmdd[-2:]])
-
-def chunks(arr,size):
-    sindex = np.arange(0,len(arr),size)
-    eindex = np.append(sindex[1:],len(arr)-1)
-    return [arr[si:ei] for si,ei in zip(sindex,eindex)]
-
-def mkdir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-#---------------------- Date ----------------------
-def generate_trade_date_file():
-    sql = "SELECT \
-           TRADE_DAYS \
-           FROM \
-           WINDDF.ASHARECALENDAR \
-           WHERE \
-           S_INFO_EXCHMARKET = 'SSE' AND \
-           TRADE_DAYS >= {} \
-           ORDER BY \
-           TRADE_DAYS ASC".format('10000000')
-    conn = ora.connect(gvars.ConnWinddb)
-    dts = pd.read_sql(sql,conn)
-    dts.to_csv(gvars.TradeDateFile,header = False,index = False)
-
-def all_trade_dates()->list:
-    try:
-        with open(gvars.TradeDateFile,'r') as f:dates = f.read().splitlines()
-    except:
-        dates = []
-    return dates
-
-def n_all_trade_dates()->int:
-    return len(open(gvars.TradeDateFile,'r').readlines())
-
-def global_trade_dates()->list:
-    return get_dates(sdate=gvars.StartDate,edate=Ini().find('today'))
-
-def datestr2num(datestr:list)->np.ndarray:
-    return np.array([int(dt) for dt in datestr])
-
-def datenum2str(datenum:np.ndarray)->list:
-    return [str(int(dt)) for dt in datenum]
-
-def date_offset(date:str,offset:int=-1)->str:
-    try:
-        dates = datestr2num(all_trade_dates())
-        dt = dates[np.where(dates>=int(date))[0][0]+offset]
-        return str(dt)
-    except: return ''
-
-def get_dates(sdate:str=None,edate:str=None,window:int=None,
-              dates:list=None,type:str='[]'):
-    if dates is None:
-        if (sdate is not None) and (edate is not None):
-            dates = datestr2num(all_trade_dates())
-            dates = dates[(dates>=int(sdate)) & (dates<=int(edate))]
-            dates = datenum2str(dates)
-        elif (sdate is None) and (edate is not None):
-            sdate = date_offset(edate,offset=-window+1)
-            dates = get_dates(sdate=sdate,edate=edate)
-        elif (edate is None) and (sdate is not None):
-            edate = date_offset(sdate,offset=window-1)
-            dates = get_dates(sdate=sdate,edate=edate)
-    if '(' in type: del dates[0]
-    if ')' in type: del dates[-1]
-    return dates
-
-#---------------------- Ids ----------------------
-def generate_instruments_file():
-    instruments = []
-    for cp in gvars.IdComponets:
-        instruments += (globals()[cp]().tickers)
-    instruments.sort()
-    with open(gvars.IdFile, "w", newline="") as f:
-        for id in instruments:f.write("%s\n" % id)
-
-def all_instruments()->list:
-    try:
-        with open(gvars.IdFile,'r') as f:instruments = f.read().splitlines()
-    except:
-        instruments = []
-    return instruments
-
-def n_all_instruments()->int:
-    return len(open(gvars.IdFile,'r').readlines())
-
-def instruments_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
+def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
     if instruments is None:instruments = all_instruments()
     d = {'00':sz,
          '30':sz,
@@ -170,45 +33,62 @@ def instruments_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
          'ss':idx}
     return [d[id[:2]] for id in instruments]
 
-def all_ashare_stock_instruments()->list:
-    instruments_db = AShareStocks().tickers
-    instruments_all = all_instruments()
-    instruments = [id for id in instruments_db if id in instruments_all]
-    return instruments
+def get_ids_rq():
+    # sh:'XSHG',sz:'XSHE'
+    d_ids = {''}
+    ids = all_ids()
+    ids_index_dict = all_ashare_index_ids_sh()
+    ids2 = [ids_index_dict[id] if id in ids_index_dict else id for id in ids]
+    ids_mkt = ids_market(ids,sh='.XSHG',sz='.XSHE',idx='.XSHG')
+    ids_rq = [id+mkt for id,mkt in zip(ids2,ids_mkt)]
+    return ids_rq
 
-def all_ashare_index_instruments()->list:
-    instruments_db = AShareIndices().tickers
-    instruments_all = all_instruments()
-    instruments = [id for id in instruments_db if id in instruments_all]
-    return instruments
+def chunks(arr,size):
+    sindex = np.arange(0,len(arr),size)
+    eindex = np.append(sindex[1:],len(arr)-1)
+    return [arr[si:ei] for si,ei in zip(sindex,eindex)]
 
-def all_ashare_index_instruments_sh()->dict:
-    instruments_db = AShareIndices().tickers
-    instruments_db_sh = AShareIndices().tickers_sh
-    instruments_all = all_instruments()
-    instruments = {id:id_sh for id,id_sh in zip(instruments_db,instruments_db_sh) if id in instruments_all}
-    return instruments
-
-#%% Class of base
-class base_():
-    def __init__(self,fini=None):
-        if fini is not None:
-            self.fini = fini
-            self.ini = Ini(fini)
+def cumdiff(sr):
+    return sr.diff().fillna(sr)
 
 #%% Class of HFData
 class HFData(base_):
     def __init__(self,fini):
         super().__init__(fini)
         # From outside
-        self.ids = all_instruments()
+        self.ids = all_ids()
         # From ini
-        self.raw_csv_dir = self.ini.findString('RawCsvDir')
-        mkdir(self.raw_csv_dir)
+        self.raw_dir = self.ini.findString('RawDir')
+        mkdir(self.raw_dir)
         self.csv_dir = self.ini.findString('CsvDir')
         mkdir(self.csv_dir)
         self.bin_dir = self.ini.findString('BinDir')
         mkdir(self.bin_dir)
+        self.mb_fields = self.ini.findStringVec('MbFields')
+        self.mb_fields_dict = {'last':'tp',
+                               'volume':'cumvolume',
+                               'total_turnover':'cumvwapsum',
+                               'a1':'ap1',
+                               'a2':'ap2',
+                               'a3':'ap3',
+                               'a4':'ap4',
+                               'a5':'ap5',
+                               'b1':'bp1',
+                               'b2':'bp2',
+                               'b3':'bp3',
+                               'b4':'bp4',
+                               'b5':'bp5',
+                               'a1_v':'av1',
+                               'a2_v':'av2',
+                               'a3_v':'av3',
+                               'a4_v':'av4',
+                               'a5_v':'av5',
+                               'b1_v':'bv1',
+                               'b2_v':'bv2',
+                               'b3_v':'bv3',
+                               'b4_v':'bv4',
+                               'b5_v':'bv5'}
+        self.snapshot_fields = self.ini.findStringVec('SnapShotFields')
         self.start_date = self.ini.findString('StartDate')
         self.end_date = self.ini.findString('EndDate')
         self.trade_dates = get_dates(self.start_date,self.end_date)
@@ -224,32 +104,38 @@ class HFData(base_):
         return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
             end_date=yyyymmdd2yyyy_mm_dd(dt),frequency='tick')
 
-#%% Class of MbData
-class MbData(HFData):
-    def __init__(self,fini,freq):
-        super().__init__(fini)
-        self.freq = str(freq)+'m'
-        self.sub_dir = 'mb'+str(freq)
-        self.fields = self.ini.findStringVec('Fields')
+    def _get_data(self,data):
+        if not isinstance(data.ask_vols,list):
+            abv = [np.nan]*20
+        else:
+            abv = data.ask_vols+data.asks+data.bid_vols+data.bids
+        return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
+            data.prev_close,data.prev_settlement,data.total_turnover,data.volume]
 
-    def run_csv(self):
-        # Loop self.fields
-        for field in self.fields:
-            print('**** {} ****'.format(field))
-            # Loop self.trade_dates
-            for dt in self.trade_dates:
-                # csv file name
-                dir_field = os.path.join(self.raw_csv_dir,self.sub_dir,field)
-                mkdir(dir_field)
-                csv_file = os.path.join(dir_field,dt+'.csv')
-                if not os.path.exists(csv_file):
-                    # Get mb data in form of pd.DataFrame
-                    d_raw = pd.DataFrame(self.get_price_mb(self.ids_rq,dt,field),columns=self.ids_rq)
-                    d_raw.columns = self.ids
-                    d_raw.index = d_raw.index.strftime('%H%M')
-                    # Store the DataFrame to the csv
-                    d_raw.to_csv(csv_file)
-                print('{}|{}'.format(field,dt))
+    def get_snapshot(self,tickers=None):
+        if tickers is None: tickers = self.ids
+        idx = index_lshort_in_llong(tickers,self.ids)
+        tickers_rq = list_index(self.ids_rq,idx)
+        data_list = rq.current_snapshot(tickers_rq)
+        df = pd.DataFrame({data._order_book_id:self._get_data(data) for ticker,data in zip(tickers,data_list)}).T
+        df.columns = self.snapshot_fields
+        df = pd.DataFrame(df,index=tickers_rq)
+        df.index = tickers
+        dtime = data_list[0].datetime
+        return df,dtime
+
+    def save_snapshot(self,tickers=None):
+        t1 = time.time()
+        df,dtime = self.get_snapshot(tickers)
+        dir_ss = os.path.join(self.raw_dir,'snapshot')
+        mkdir(dir_ss)
+        suffix=str(len(df))
+        dtime_str = dtime.strftime('%Y%m%d.%H%M%S')
+        csv_name = os.path.join(dir_ss,dtime_str+'.'+suffix+'.csv')
+        df['time'] = dtime.strftime('%H%M%S')
+        df.to_csv(csv_name)
+        t2 = time.time()
+        print(t2-t1)
 
 #%% Class of TickData
 class TickData(HFData):
@@ -258,26 +144,131 @@ class TickData(HFData):
         self.freq = 'tick'
         self.sub_dir = 'tick'
 
-    def get_raw_csv(self):
-        # Loop self.trade_dates
-        for dt in self.trade_dates:
-            dir_field = os.path.join(self.raw_csv_dir,self.sub_dir,dt)
-            mkdir(dir_field)
-            for ticker,instr in zip(self.ids_rq,all_instruments()):
-                # csv file name
-                csv_file = os.path.join(dir_field,instr+'.csv')
-                if not os.path.exists(csv_file):
+    def get_raw_csv(self,sdate=None,edate=None):
+        if sdate is None: sdate = self.start_date
+        if edate is None: edate = self.end_date
+        trade_dates = get_dates(sdate,edate)
+        # Loop trade_dates
+        for dt in trade_dates:
+            dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
+            mkdir(dir_dt)
+            for ticker,instr in zip(self.ids_rq,self.ids):
+                pdb.set_trace()
+                # File name
+                csv_file = os.path.join(dir_dt,instr+'.csv')
+                gz_file = os.path.join(dir_dt,instr+'.tar.gz')
+                if not os.path.exists(gz_file):
                     d_raw = self.get_tick(ticker,dt)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
                         # Store the DataFrame to the csv
                         d_raw.to_csv(csv_file)
+                        # Tar csv
+                        os.system('tar zcPf {} {}'.format(gz_file,csv_file))
+                        # Delete csv
+                        os.system('rm {}'.format(csv_file))
                 print('{}|{}'.format(dt,instr))
+
+    def tick2mb1(self,sdate=None,edate=None):
+        if sdate is None: sdate = self.start_date
+        if edate is None: edate = self.end_date
+        trade_dates = get_dates(sdate,edate)
+        #ids = self.ids[:10]
+        ids = self.ids
+        # Loop trade_dates
+        for dt in trade_dates:
+            t1 = time.time()
+            dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
+            for ii,instr in enumerate(ids):
+                # csv file name
+                gz_file = os.path.join(dir_dt,instr+'.tar.gz')
+                if os.path.exists(gz_file):
+                    t01 = time.time()
+                    # Modify data_tick for later calculation
+                    data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_fields_dict)
+                    index = pd.to_datetime(data_tick.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
+                    data_tick['time']= index.strftime('%H%M').astype(int)
+                    data_tick['time'][data_tick['time']<930] = 925
+                    data_tick['volume'] = cumdiff(data_tick['cumvolume'])
+                    data_tick['vwapsum'] = cumdiff(data_tick['cumvwapsum'])
+                    data_tick['lul'] = np.logical_and(data_tick['ap1']==0,data_tick['bp1']>0).astype(int)
+                    data_tick['ldl'] = np.logical_and(data_tick['ap1']>0,data_tick['bp1']==0).astype(int)
+                    data_tick['luvolume'] = data_tick['volume']*data_tick['lul']
+                    data_tick['ldvolume'] = data_tick['volume']*data_tick['ldl']
+                    data_tick['luvwapsum'] = data_tick['vwapsum']*data_tick['lul']
+                    data_tick['ldvwapsum'] = data_tick['vwapsum']*data_tick['ldl']
+                    data_tick['ap1'][data_tick['ap1']==0] = np.nan
+                    data_tick['bp1'][data_tick['bp1']==0] = np.nan
+                    # If is old shanghai stocks
+                    instr_market = ids_market([instr])[0]
+                    is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (instr_market=='sh')
+                    if not is_old_sh: 
+                        data_tick['time'][data_tick['time']>1457] = 1500
+                    else:
+                        data_tick['time'][data_tick['time']>1500] = 1500
+                    # tick -> mb1
+                    # open
+                    open = data_tick.groupby('time')['tp'].first()
+                    # ap,bp,av,bv,tp
+                    data1 = data_tick.groupby('time').last()
+                    tp = data1['tp']
+                    ap1,ap2,ap3,ap4,ap5 = data1['ap1'],data1['ap2'],data1['ap3'],data1['ap4'],data1['ap5']
+                    bp1,bp2,bp3,bp4,bp5 = data1['bp1'],data1['bp2'],data1['bp3'],data1['bp4'],data1['bp5']
+                    av1,av2,av3,av4,av5 = data1['av1'],data1['av2'],data1['av3'],data1['av4'],data1['av5']    
+                    bv1,bv2,bv3,bv4,bv5 = data1['bv1'],data1['bv2'],data1['bv3'],data1['bv4'],data1['bv5'] 
+                    # volumes and vwapsums
+                    v_list = ['volume','vwapsum','luvolume','ldvolume','luvwapsum','ldvwapsum']
+                    data_v = data_tick.groupby('time')[v_list].sum()
+                    for v in v_list:
+                        exec('{0} = data_v[\'{0}\']'.format(v))
+                    vwap = data_v['vwapsum']/data_v['volume']
+                    # mid,lsp,lspp
+                    limitup = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
+                    limitdown = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
+                    mid = (data1['ap1']+data1['bp1'])/2
+                    lsp = data1['ap1']-data1['bp1']
+                    lspp = lsp/mid
+                    # high,low,sp
+                    idx_open_to_delete = data_tick.index[data_tick['time']<930][:-1]
+                    data_tick.drop(index=idx_open_to_delete,inplace=True)
+                    if not is_old_sh:
+                        idx_close_to_delete = data_tick.index[data_tick['time']>1457][:-1]
+                        data_tick.drop(index=idx_close_to_delete,inplace=True)
+                    high = data_tick.groupby('time')['tp'].max() 
+                    low = data_tick.groupby('time')['tp'].min() 
+                    abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
+                    sp = abp_mean['ap1'] - abp_mean['bp1']
+                    t02 = time.time()
+                    # DataFrame -> csv -> gz
+                    for field in self.mb_fields:
+                        dir_dest = os.path.join(self.csv_dir,'mb1',field)
+                        mkdir(dir_dest)
+                        csv_dest = os.path.join(dir_dest,dt+'.csv')
+                        gz_dest = os.path.join(dir_dest,dt+'.tar.gz')
+                        new = eval(field)
+                        new.name = field
+                        new = new.to_frame()
+                        new['ticker'] = instr
+                        #new = pd.DataFrame(new,columns=['ticker',field])
+                        if ii==0:
+                            os.system('rm {} -rf'.format(csv_dest))
+                            new.to_csv(csv_dest,mode='a')
+                        else:
+                            new.to_csv(csv_dest,header=False,mode='a')
+                        if (ii==(len(ids)-1)):
+                            # Tar csv
+                            os.system('tar zcPf {} {}'.format(gz_dest,csv_dest))
+                            # Delete csv
+                            os.system('rm {}'.format(csv_dest))
+                    t03 = time.time()
+                    #print('  Costs {0:.4f} + {1:.4f} = {2:.4f}s'.format(t02-t01,t03-t02,t03-t01))
+                #print('{}|{}'.format(dt,instr))    
+            t2 = time.time()
+            print('** {} is done, costs {:.2f}s **'.format(dt,t2-t1))    
+
 
 #%% Test Codes
 if __name__=='__main__':
     tick = TickData('./ini/mb.ini')
-    tick.get_raw_csv()
-    #mb = MbData('./ini/mb.ini',freq=5)
-    #mb.run_csv()
+    tick.tick2mb1()
