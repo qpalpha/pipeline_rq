@@ -3,3 +3,6 @@ __pycache__/
 *.swp
 *.swo
 *.pyc
+*.csv
+snapshot/
+

@@ -100,6 +100,16 @@ class HFData(base_):
             end_date=yyyymmdd2yyyy_mm_dd(dt),fields=fields,frequency=self.freq,\
             adjust_type='none')
 
+#%% Class of Snapshot
+class Snapshot():
+    def __init__(self):
+        self.ids = all_ids()
+        self.ids_rq = get_ids_rq()
+        self.snapshot_fields = ['av1','av2','av3','av4','av5','a1','a2','a3','a4','a5',\
+                                'bv1','bv2','bv3','bv4','bv5','b1','b2','b3','b4','b5',\
+                                'high','last','low','open','open_interest','prev_close',\
+                                'prev_settlement','total_turnover','volume']
+
     def get_tick(self,ticker,dt):
         return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
             end_date=yyyymmdd2yyyy_mm_dd(dt),frequency='tick')
@@ -112,7 +122,7 @@ class HFData(base_):
         return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
             data.prev_close,data.prev_settlement,data.total_turnover,data.volume]
 
-    def get_snapshot(self,tickers=None):
+    def catch(self,tickers=None):
         if tickers is None: tickers = self.ids
         idx = index_lshort_in_llong(tickers,self.ids)
         tickers_rq = list_index(self.ids_rq,idx)
@@ -122,18 +132,19 @@ class HFData(base_):
         df = pd.DataFrame(df,index=tickers_rq)
         df.index = tickers
         dtime = data_list[0].datetime
+        df['time'] = dtime.strftime('%H%M%S')
         return df,dtime
 
-    def save_snapshot(self,tickers=None):
+    def save(self,tickers=None,file:str=None):
         t1 = time.time()
-        df,dtime = self.get_snapshot(tickers)
-        dir_ss = os.path.join(self.raw_dir,'snapshot')
-        mkdir(dir_ss)
-        suffix=str(len(df))
+        df,dtime = self.catch(tickers)
+        #dir_ss = os.path.join(self.raw_dir,'snapshot')
         dtime_str = dtime.strftime('%Y%m%d.%H%M%S')
-        csv_name = os.path.join(dir_ss,dtime_str+'.'+suffix+'.csv')
-        df['time'] = dtime.strftime('%H%M%S')
-        df.to_csv(csv_name)
+        if file is None:
+            dir_ss = './snapshot'
+            mkdir(dir_ss)
+            file = os.path.join(dir_ss,dtime_str+'.csv')
+        df.to_csv(file)
         t2 = time.time()
         print(t2-t1)
 

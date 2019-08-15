@@ -10,6 +10,6 @@ from hfdata import *
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/snapshot.ini')
-    tick.save_snapshot()
-    tick.save_snapshot(all_ids()[:10])
+    tick = Snapshot()
+    df,dtime = tick.catch()
+    tick.save()
