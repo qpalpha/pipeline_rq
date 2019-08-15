@@ -11,5 +11,4 @@ from hfdata import *
 #%% Test Codes
 if __name__=='__main__':
     tick = Snapshot()
-    df,dtime = tick.catch()
     tick.save()

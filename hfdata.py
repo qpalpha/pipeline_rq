@@ -100,6 +100,10 @@ class HFData(base_):
             end_date=yyyymmdd2yyyy_mm_dd(dt),fields=fields,frequency=self.freq,\
             adjust_type='none')
 
+    def get_tick(self,ticker,dt):
+        return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
+            end_date=yyyymmdd2yyyy_mm_dd(dt),frequency='tick')
+
 #%% Class of Snapshot
 class Snapshot():
     def __init__(self):
@@ -108,11 +112,7 @@ class Snapshot():
         self.snapshot_fields = ['av1','av2','av3','av4','av5','a1','a2','a3','a4','a5',\
                                 'bv1','bv2','bv3','bv4','bv5','b1','b2','b3','b4','b5',\
                                 'high','last','low','open','open_interest','prev_close',\
-                                'prev_settlement','total_turnover','volume']
-
-    def get_tick(self,ticker,dt):
-        return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
-            end_date=yyyymmdd2yyyy_mm_dd(dt),frequency='tick')
+                                'prev_settlement','total_turnover','volume','time','date']
 
     def _get_data(self,data):
         if not isinstance(data.ask_vols,list):
@@ -122,28 +122,31 @@ class Snapshot():
         return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
             data.prev_close,data.prev_settlement,data.total_turnover,data.volume]
 
-    def catch(self,tickers=None):
-        if tickers is None: tickers = self.ids
-        idx = index_lshort_in_llong(tickers,self.ids)
-        tickers_rq = list_index(self.ids_rq,idx)
-        data_list = rq.current_snapshot(tickers_rq)
-        df = pd.DataFrame({data._order_book_id:self._get_data(data) for ticker,data in zip(tickers,data_list)}).T
-        df.columns = self.snapshot_fields
-        df = pd.DataFrame(df,index=tickers_rq)
-        df.index = tickers
-        dtime = data_list[0].datetime
-        df['time'] = dtime.strftime('%H%M%S')
-        return df,dtime
+    def catch(self):
+        # Ticker
+        tickers_dict = {tk_rq:tk for tk_rq,tk in zip(self.ids_rq,self.ids)}
+        # Get current_snapshot
+        data_list = rq.current_snapshot(self.ids_rq)
+        # Time and date vectors
+        dtime = data_list[0].datetime.strftime('%Y%m%d.%H%M%S')
+        l_ = len(data_list)
+        tvec = np.full([l_,1],np.float(dtime[-6:]))
+        dvec = np.full([l_,1],np.float(dtime[:8]))
+        # Stack data and tickers
+        mat = np.vstack([self._get_data(data) for data in data_list])
+        mat = np.hstack([mat,tvec,dvec])
+        tickers = [tickers_dict[data._order_book_id] for data in data_list]
+        # Return
+        return mat,tickers,dtime
 
-    def save(self,tickers=None,file:str=None):
+    def save(self,file:str=None):
         t1 = time.time()
-        df,dtime = self.catch(tickers)
-        #dir_ss = os.path.join(self.raw_dir,'snapshot')
-        dtime_str = dtime.strftime('%Y%m%d.%H%M%S')
+        mat,tickers,dtime = self.catch()
         if file is None:
             dir_ss = './snapshot'
             mkdir(dir_ss)
-            file = os.path.join(dir_ss,dtime_str+'.csv')
+            file = os.path.join(dir_ss,dtime+'.csv')
+        df = pd.DataFrame(mat,index=tickers,columns=self.snapshot_fields)
         df.to_csv(file)
         t2 = time.time()
         print(t2-t1)
@@ -164,7 +167,6 @@ class TickData(HFData):
             dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
             mkdir(dir_dt)
             for ticker,instr in zip(self.ids_rq,self.ids):
-                pdb.set_trace()
                 # File name
                 csv_file = os.path.join(dir_dt,instr+'.csv')
                 gz_file = os.path.join(dir_dt,instr+'.tar.gz')
