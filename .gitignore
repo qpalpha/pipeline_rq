@@ -4,5 +4,6 @@ __pycache__/
 *.swo
 *.pyc
 *.csv
+*.log
 snapshot/
 
