@@ -12,7 +12,12 @@ import pdb
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/tick.history.ini')
     edate = today()
+    # tick
+    tick = TickData('./ini/tick.history.ini')
     sdate = date_offset(edate,-30)
     tick.get_raw_csv(sdate,edate)
+    # mb1
+    tick = TickData('./ini/mb1.history.ini')
+    sdate = date_offset(edate,-3)
+    tick.tick2mb1(sdate,edate)
