@@ -134,7 +134,7 @@ class Snapshot():
         dvec = np.full([l_,1],np.float(dtime[:8]))
         # Stack data and tickers
         mat = np.vstack([self._get_data(data) for data in data_list])
-        mat = np.hstack([mat,tvec,dvec])
+        mat = np.hstack([mat,tvec,dvec]).astype(float)
         tickers = [tickers_dict[data._order_book_id] for data in data_list]
         # Return
         return mat,tickers,dtime
