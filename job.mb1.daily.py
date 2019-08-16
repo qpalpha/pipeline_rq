@@ -7,9 +7,12 @@
 """
 #%% Import Part
 from hfdata import *
+from qpc import *
 import pdb
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/tick.history.ini')
-    tick.get_raw_csv()
+    tick = TickData('./ini/mb1.history.ini')
+    edate = today()
+    sdate = date_offset(edate,-3)
+    tick.tick2mb1(sdate,edate)

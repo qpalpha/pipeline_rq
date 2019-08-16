@@ -199,7 +199,10 @@ class TickData(HFData):
                 if os.path.exists(gz_file):
                     t01 = time.time()
                     # Modify data_tick for later calculation
-                    data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_fields_dict)
+                    try:
+                        data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_fields_dict)
+                    except:
+                        continue
                     index = pd.to_datetime(data_tick.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
                     data_tick['time']= index.strftime('%H%M').astype(int)
                     data_tick['time'][data_tick['time']<930] = 925
