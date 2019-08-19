@@ -142,7 +142,6 @@ class Snapshot():
         return mat,tickers,dtime
 
     def save(self,dirs:str=None):
-        t1 = time.time()
         mat,tickers,dtime = self.catch_result
         if dirs is None:
             dir_ss = './snapshot'
@@ -152,8 +151,6 @@ class Snapshot():
             file = os.path.join(dirs,dtime+'.csv')
         df = pd.DataFrame(mat,index=tickers,columns=self.snapshot_fields)
         df.to_csv(file)
-        t2 = time.time()
-        print(t2-t1)
 
 #%% Class of TickData
 class TickData(HFData):
