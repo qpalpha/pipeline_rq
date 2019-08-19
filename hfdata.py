@@ -141,13 +141,15 @@ class Snapshot():
         self.catch_result = mat,tickers,data_list[0].datetime.strftime('%Y%m%d.%H%M%S')
         return mat,tickers,dtime
 
-    def save(self,file:str=None):
+    def save(self,dirs:str=None):
         t1 = time.time()
         mat,tickers,dtime = self.catch_result
-        if file is None:
+        if dirs is None:
             dir_ss = './snapshot'
             mkdir(dir_ss)
             file = os.path.join(dir_ss,dtime+'.csv')
+        else:
+            file = os.path.join(dirs,dtime+'.csv')
         df = pd.DataFrame(mat,index=tickers,columns=self.snapshot_fields)
         df.to_csv(file)
         t2 = time.time()
