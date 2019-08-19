@@ -138,11 +138,12 @@ class Snapshot():
         mat = np.hstack([mat,dvec]).astype(float)
         tickers = [tickers_dict[data._order_book_id] for data in data_list]
         # Return
+        self.catch_result = mat,tickers,dteim
         return mat,tickers,dtime
 
     def save(self,file:str=None):
         t1 = time.time()
-        mat,tickers,dtime = self.catch()
+        mat,tickers,dtime = self.catch_result
         if file is None:
             dir_ss = './snapshot'
             mkdir(dir_ss)
