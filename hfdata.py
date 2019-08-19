@@ -119,8 +119,10 @@ class Snapshot():
             abv = [np.nan]*20
         else:
             abv = data.ask_vols+data.asks+data.bid_vols+data.bids
+        dt = data.datetime
         return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
-            data.prev_close,data.prev_settlement,data.total_turnover,data.volume]
+            data.prev_close,data.prev_settlement,data.total_turnover,data.volume,\
+            float(dt.strftime('%H%M%S'))]
 
     def catch(self):
         # Ticker
@@ -128,13 +130,12 @@ class Snapshot():
         # Get current_snapshot
         data_list = rq.current_snapshot(self.ids_rq)
         # Time and date vectors
-        dtime = data_list[0].datetime.strftime('%Y%m%d.%H%M%S')
+        dtime = data_list[0].datetime.strftime('%Y%m%d')
         l_ = len(data_list)
-        tvec = np.full([l_,1],np.float(dtime[-6:]))
-        dvec = np.full([l_,1],np.float(dtime[:8]))
+        dvec = np.full([l_,1],dtime)
         # Stack data and tickers
         mat = np.vstack([self._get_data(data) for data in data_list])
-        mat = np.hstack([mat,tvec,dvec]).astype(float)
+        mat = np.hstack([mat,dvec]).astype(float)
         tickers = [tickers_dict[data._order_book_id] for data in data_list]
         # Return
         return mat,tickers,dtime
@@ -286,5 +287,6 @@ class TickData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/mb.ini')
-    tick.tick2mb1()
+    tick = Snapshot()
+    tick.catch()
+    
