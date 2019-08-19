@@ -138,7 +138,7 @@ class Snapshot():
         mat = np.hstack([mat,dvec]).astype(float)
         tickers = [tickers_dict[data._order_book_id] for data in data_list]
         # Return
-        self.catch_result = mat,tickers,dteim
+        self.catch_result = mat,tickers,dtime
         return mat,tickers,dtime
 
     def save(self,file:str=None):
