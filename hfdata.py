@@ -256,8 +256,12 @@ class TickData(HFData):
                     if not is_old_sh:
                         idx_close_to_delete = data_tick.index[data_tick['time']>1457][:-1]
                         data_tick.drop(index=idx_close_to_delete,inplace=True)
-                    high = data_tick.groupby('time')[['tp','high']].max().max(axis=1)
-                    low = data_tick.groupby('time')[['tp','low']].min().min(axis=1)
+                    high_df = data_tick.groupby('time')[['tp','high']].max()
+                    high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
+                    high = high_df.max(axis=1)
+                    low_df = data_tick.groupby('time')[['tp','low']].min()
+                    low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
+                    low = low_df.min(axis=1)
                     abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
                     sp = abp_mean['ap1'] - abp_mean['bp1']
                     t02 = time.time()
@@ -313,7 +317,6 @@ class MBData(HFData):
                 mb1 = read_mb1_data(dt,field)
                 mb1 = mb1[mb1.index>930]
                 # Fill nans
-                mb1 = self._fillna(field,mb1)
                 # Change time
                 mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
                 mb = mb1.groupby(mb1.index).apply(lambda d:self._compound(field,d))
