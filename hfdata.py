@@ -16,12 +16,16 @@ warnings.filterwarnings("ignore")
 import pdb
 
 #%% Constant variables
-MINS_MB1 = np.hstack([925,np.array(pd.date_range(start='09:31:00',end='15:00:00',freq='min')\
-        .strftime('%H%M').astype(int))])
-
 NEW_RULE_DATE_SH = 20180820
 
 #%% Functions
+def min_bar(freq):
+    bar1 = np.array(pd.date_range(start='09:30:00',end='11:30:00',freq=freq+'min')\
+        .strftime('%H%M').astype(int))
+    bar2 = np.array(pd.date_range(start='13:00:00',end='15:00:00',freq=freq+'min')\
+        .strftime('%H%M').astype(int))
+    return np.hstack([bar1[1:],bar2[1:]])
+
 def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
     if instruments is None:instruments = all_instruments()
     d = {'00':sz,
@@ -65,7 +69,7 @@ class HFData(base_):
         self.bin_dir = self.ini.findString('BinDir')
         mkdir(self.bin_dir)
         self.mb_fields = self.ini.findStringVec('MbFields')
-        self.mb_fields_dict = {'last':'tp',
+        self.mb_feilds_rename_dict = {'last':'tp',
                                'volume':'cumvolume',
                                'total_turnover':'cumvwapsum',
                                'a1':'ap1',
@@ -201,7 +205,7 @@ class TickData(HFData):
                     t01 = time.time()
                     # Modify data_tick for later calculation
                     try:
-                        data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_fields_dict)
+                        data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_feilds_rename_dict)
                     except:
                         continue
                     index = pd.to_datetime(data_tick.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
@@ -252,8 +256,8 @@ class TickData(HFData):
                     if not is_old_sh:
                         idx_close_to_delete = data_tick.index[data_tick['time']>1457][:-1]
                         data_tick.drop(index=idx_close_to_delete,inplace=True)
-                    high = data_tick.groupby('time')['tp'].max() 
-                    low = data_tick.groupby('time')['tp'].min() 
+                    high = data_tick.groupby('time')[['tp','high']].max().max(axis=1)
+                    low = data_tick.groupby('time')[['tp','low']].min().min(axis=1)
                     abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
                     sp = abp_mean['ap1'] - abp_mean['bp1']
                     t02 = time.time()
@@ -284,9 +288,69 @@ class TickData(HFData):
             t2 = time.time()
             print('** {} is done, costs {:.2f}s **'.format(dt,t2-t1))    
 
+#%% Class of MBData
+class MBData(HFData):
+    def __init__(self,fini,freq='5'):
+        super().__init__(fini)
+        self.freq = freq
+        self.sub_dir = 'mb'+freq
+        self.MB = min_bar(freq)
+
+    def run(self,sdate=None,edate=None):
+        if sdate is None: sdate = self.start_date
+        if edate is None: edate = self.end_date
+        trade_dates = get_dates(sdate,edate)
+        # Loop trade_dates
+        for dt in trade_dates:
+            dir_mb1 = os.path.join(self.csv_dir,'mb1')
+            dir_mb = os.path.join(self.csv_dir,self.sub_dir)
+            self.is_before_new_rule = (int(dt)<NEW_RULE_DATE_SH)
+            # Loop mb_fields
+            for field in ['low']:
+            #for field in self.mb_fields:
+                print(field)
+                # Read mb1 file
+                mb1 = read_mb1_data(dt,field)
+                mb1 = mb1[mb1.index>930]
+                # Fill nans
+                mb1 = self._fillna(field,mb1)
+                # Change time
+                mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
+                mb = mb1.groupby(mb1.index).apply(lambda d:self._compound(field,d))
+                pdb.set_trace()
+                a=1
+
+    def _clear_agg_auction(self,data):
+        agg_auction = np.array(data.index)>1457
+        if self.is_before_new_rule:
+            sz = np.array(ids_market(data.columns.tolist(),sh=False,sz=True,idx=False))
+            data.loc[agg_auction,sz] = np.nan
+        else:
+            data.loc[agg_auction,:] = np.nan
+        return data
+
+    def _fillna(self,field,data):
+        if field in []:
+            data = self._clear_agg_auction(data)
+        if field in ['open','tp','high','low']:
+            data.fillna(method='ffill',inplace=True)
+        return data
+
+    def _compound(self,field,data):
+        if field in ['open']:
+            cdata = data.iloc[0,:]
+        elif field in ['tp']:
+            cdata = data.iloc[-1,:]
+        elif field in ['high']:
+            cdata = data.max()
+        elif field in ['low']:
+            cdata = data.min()
+        return cdata
+        
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = Snapshot()
-    tick.catch()
-    
+    tick = TickData('./ini/mb1.history.ini')
+    tick.tick2mb1()
+    mb = MBData('./ini/mb.ini','5')
+    mb.run()
