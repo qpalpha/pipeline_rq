@@ -329,8 +329,6 @@ class TickData(HFData):
         data['bp1'][data['bp1']==0] = np.nan
         return data
 
-
-
 #%% Class of MBData
 class MBData(HFData):
     def __init__(self,fini,freq='5'):
@@ -339,50 +337,85 @@ class MBData(HFData):
         self.sub_dir = 'mb'+freq
         self.MB = min_bar(freq)
 
-    def run(self,sdate=None,edate=None):
+    def to_csv(self,sdate=None,edate=None):
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
         trade_dates = get_dates(sdate,edate)
         # Loop trade_dates
         for dt in trade_dates:
+            t1 = time.time()
             dir_mb1 = os.path.join(self.csv_dir,'mb1')
             dir_mb = os.path.join(self.csv_dir,self.sub_dir)
             self.is_before_new_rule = (int(dt)<NEW_RULE_DATE_SH)
             # Loop mb_fields
-            for field in ['sp']:
-            #for field in self.mb_fields:
-                print(field)
+            #for field in ['vwap','vwapsum']:
+            for field in self.mb_fields:
                 # Read mb1 file
                 mb1 = read_mb1_data(dt,field)
                 # Fill nans
                 mb1 = self._fillna_(field,mb1)
                 # Change time
-                mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
-                pdb.set_trace()
+                mb1 = self._change_time_(mb1)
                 # Do the calculation
-                mb = mb1.groupby(mb1.index).apply(lambda d:self._compound_(field,d))
-                pdb.set_trace()
-                a=1
+                if field in ['sp']:
+                    ntick1 = read_mb1_data(dt,'ntick')
+                    ntick1 = self._fillna_('ntick',ntick1)
+                    ntick1 = self._change_time_(ntick1)
+                    sum_sp1 = ntick1*mb1
+                    ntick = ntick1.groupby(ntick1.index).sum()
+                    sum_sp = sum_sp1.groupby(sum_sp1.index).sum()
+                    mb = sum_sp/ntick
+                elif field in ['vwap']:
+                    vwapsum1 = read_mb1_data(dt,'vwapsum')
+                    vwapsum1 = self._fillna_('vwapsum',vwapsum1)
+                    vwapsum1 = self._change_time_(vwapsum1)
+                    vwapsum = vwapsum1.groupby(vwapsum1.index).sum()
+                    volume1 = read_mb1_data(dt,'volume')
+                    volume1 = self._fillna_('volume',volume1)
+                    volume1 = self._change_time_(volume1)
+                    volume = volume1.groupby(volume1.index).sum()
+                    mb = vwapsum/volume
+                elif field in ['vwapsum','volume','ntick']:
+                    mb = eval(field)
+                else:
+                    mb = mb1.groupby(mb1.index).apply(lambda d:self._compound_(field,d))
+                # Save csv
+                dir_dest = os.path.join(dir_mb,field)
+                mkdir(dir_dest)
+                csv_mb = os.path.join(dir_dest,dt+'.csv')
+                mb.to_csv(csv_mb)
+            t2 = time.time()
+            # Print log
+            print('mb{0}|{1}|{2:.2f}s'.format(self.freq,dt,t2-t1))
 
+    def to_bin(self,sdate='20100101'):
+        pdb.set_trace()
+        pass 
+            
+
+    def _change_time_(self,data):
+        data.index = data.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
+        return data
+        
     def _fillna_(self,field,data):
-        if field in ['open','tp','high','low','mid','lsp','lspp','limitup',\
-                'limitdown']:
-            data.fillna(method='ffill',inplace=True)
-        elif field in ['luvolume','ldvolume','luvwapsum','ldvwapsum']:
+        if field in ['luvolume','ldvolume','luvwapsum','ldvwapsum','ntick',\
+                'volume','vwapsum']:
             data.fillna(0,inplace=True)
+        else:
+            data.fillna(method='ffill',inplace=True)
         return data
 
     def _compound_(self,field,data):
         if field in ['open']:
             cdata = data.iloc[0,:]
-        elif field in ['tp','mid','lsp','lspp','limitup','limitdown','vwap']:
-            cdata = data.iloc[-1,:]
         elif field in ['high']:
             cdata = data.max()
         elif field in ['low']:
             cdata = data.min()
         elif field in ['luvolume','ldvolume','luvwapsum','ldvwapsum']:
             cdata = data.sum()
+        else:
+            cdata = data.iloc[-1,:]
         return cdata
 
 #%% Test Codes
@@ -390,4 +423,9 @@ if __name__=='__main__':
     #tick = TickData('./ini/mb1.history.ini')
     #tick.tick2mb1()
     mb = MBData('./ini/mb.ini','5')
-    mb.run()
+    mb.to_bin()
+    mb.to_csv()
+    mb = MBData('./ini/mb.ini','15')
+    mb.to_csv()
+    mb = MBData('./ini/mb.ini','30')
+    mb.to_csv()
