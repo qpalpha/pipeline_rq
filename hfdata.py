@@ -162,6 +162,7 @@ class TickData(HFData):
         super().__init__(fini)
         self.freq = 'tick'
         self.sub_dir = 'tick'
+        self.tick_file_fields = self.ini.findStringVec('TickFileFields')
 
     def get_raw_csv(self,sdate=None,edate=None):
         if sdate is None: sdate = self.start_date
@@ -189,18 +190,28 @@ class TickData(HFData):
                 print('{}|{}'.format(dt,instr))
 
     def tick2mb1(self,sdate=None,edate=None):
+        # Minute-bar time
+        mb1_time = min_bar('1')
+        mb1_time_aa = np.hstack([930,mb1_time])
+        # Trade dates
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
         trade_dates = get_dates(sdate,edate)
-        #ids = self.ids[:10]
-        ids = self.ids
         # Loop trade_dates
         for dt in trade_dates:
             t1 = time.time()
-            dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
-            for ii,instr in enumerate(ids):
-                # csv file name
-                gz_file = os.path.join(dir_dt,instr+'.tar.gz')
+            raw_dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
+            instr_market = ids_market(self.ids)
+            # Init oaa and caa dataframe
+            #   oaa : open aggregate auction
+            #   caa : close aggregate auction
+            oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
+            caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
+            for ii,(instr,mkt) in enumerate(zip(self.ids,instr_market)):
+                # If is old shanghai stocks
+                is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt=='sh')
+                # gz file name
+                gz_file = os.path.join(raw_dir_dt,instr+'.tar.gz')
                 if os.path.exists(gz_file):
                     t01 = time.time()
                     # Modify data_tick for later calculation
@@ -208,54 +219,38 @@ class TickData(HFData):
                         data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_feilds_rename_dict)
                     except:
                         continue
-                    index = pd.to_datetime(data_tick.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
-                    data_tick['time']= index.strftime('%H%M').astype(int)
-                    data_tick['time'][data_tick['time']<930] = 925
-                    data_tick['volume'] = cumdiff(data_tick['cumvolume'])
-                    data_tick['vwapsum'] = cumdiff(data_tick['cumvwapsum'])
-                    data_tick['lul'] = np.logical_and(data_tick['ap1']==0,data_tick['bp1']>0).astype(int)
-                    data_tick['ldl'] = np.logical_and(data_tick['ap1']>0,data_tick['bp1']==0).astype(int)
-                    data_tick['luvolume'] = data_tick['volume']*data_tick['lul']
-                    data_tick['ldvolume'] = data_tick['volume']*data_tick['ldl']
-                    data_tick['luvwapsum'] = data_tick['vwapsum']*data_tick['lul']
-                    data_tick['ldvwapsum'] = data_tick['vwapsum']*data_tick['ldl']
-                    data_tick['ap1'][data_tick['ap1']==0] = np.nan
-                    data_tick['bp1'][data_tick['bp1']==0] = np.nan
-                    # If is old shanghai stocks
-                    instr_market = ids_market([instr])[0]
-                    is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (instr_market=='sh')
-                    if not is_old_sh: 
-                        data_tick['time'][data_tick['time']>1457] = 1500
-                    else:
-                        data_tick['time'][data_tick['time']>1500] = 1500
-                    # tick -> mb1
-                    # open
+                    # Add time
+                    data_tick = self._add_time_(data_tick,is_old_sh)
+                    # Split by time
+                    oaa,data_tick,caa = self._split_by_time_(data_tick)
+                    # Open-aa
+                    if len(oaa)>0:oaa_df.loc[instr,:] = oaa
+                    if len(caa)>0:caa_df.loc[instr,:] = caa
+                    # Prep-calculation
+                    data_tick = self._prep_cal_(data_tick)
+                    # ------------------ Calculation ------------------ 
+                    # 1.open
                     open = data_tick.groupby('time')['tp'].first()
-                    # ap,bp,av,bv,tp
+                    # 2.ap,bp,av,bv,tp
                     data1 = data_tick.groupby('time').last()
                     tp = data1['tp']
                     ap1,ap2,ap3,ap4,ap5 = data1['ap1'],data1['ap2'],data1['ap3'],data1['ap4'],data1['ap5']
                     bp1,bp2,bp3,bp4,bp5 = data1['bp1'],data1['bp2'],data1['bp3'],data1['bp4'],data1['bp5']
                     av1,av2,av3,av4,av5 = data1['av1'],data1['av2'],data1['av3'],data1['av4'],data1['av5']    
                     bv1,bv2,bv3,bv4,bv5 = data1['bv1'],data1['bv2'],data1['bv3'],data1['bv4'],data1['bv5'] 
-                    # volumes and vwapsums
+                    # 3.volumes and vwapsums
                     v_list = ['volume','vwapsum','luvolume','ldvolume','luvwapsum','ldvwapsum']
                     data_v = data_tick.groupby('time')[v_list].sum()
                     for v in v_list:
                         exec('{0} = data_v[\'{0}\']'.format(v))
                     vwap = data_v['vwapsum']/data_v['volume']
-                    # mid,lsp,lspp
+                    # 4.mid,lsp,lspp
                     limitup = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
                     limitdown = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
                     mid = (data1['ap1']+data1['bp1'])/2
                     lsp = data1['ap1']-data1['bp1']
                     lspp = lsp/mid
-                    # high,low,sp
-                    idx_open_to_delete = data_tick.index[data_tick['time']<930][:-1]
-                    data_tick.drop(index=idx_open_to_delete,inplace=True)
-                    if not is_old_sh:
-                        idx_close_to_delete = data_tick.index[data_tick['time']>1457][:-1]
-                        data_tick.drop(index=idx_close_to_delete,inplace=True)
+                    # 5.high,low,sp
                     high_df = data_tick.groupby('time')[['tp','high']].max()
                     high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
                     high = high_df.max(axis=1)
@@ -281,16 +276,58 @@ class TickData(HFData):
                             new.to_csv(csv_dest,mode='a')
                         else:
                             new.to_csv(csv_dest,header=False,mode='a')
-                        if (ii==(len(ids)-1)):
+                        if (ii==(len(self.ids)-1)):
                             # Tar csv
                             os.system('tar zcPf {} {}'.format(gz_dest,csv_dest))
                             # Delete csv
                             os.system('rm {}'.format(csv_dest))
                     t03 = time.time()
-                    #print('  Costs {0:.4f} + {1:.4f} = {2:.4f}s'.format(t02-t01,t03-t02,t03-t01))
-                #print('{}|{}'.format(dt,instr))    
+            # oaa and caa
+            oaa_dest_dir = os.path.join(self.csv_dir,'aa','open')
+            mkdir(oaa_dest_dir)
+            caa_dest_dir = os.path.join(self.csv_dir,'aa','close')
+            mkdir(caa_dest_dir)
+            oaa_dest_csv = os.path.join(oaa_dest_dir,dt+'.csv')
+            caa_dest_csv = os.path.join(caa_dest_dir,dt+'.csv')
+            oaa_df.to_csv(oaa_dest_csv)
+            caa_df.to_csv(caa_dest_csv)
             t2 = time.time()
             print('** {} is done, costs {:.2f}s **'.format(dt,t2-t1))    
+
+    def _add_time_(self,data,is_old_sh):
+        index = pd.to_datetime(data.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
+        data['time']= index.strftime('%H%M').astype(int)
+        data['time'][data['time']<930] = 925
+        if not is_old_sh: 
+            data['time'][data['time']>1457] = 1501
+        else:
+            data['time'][data['time']>1500] = 1500
+        return data
+
+    def _split_by_time_(self,data):
+        oaa = data[data['time']<930]
+        caa = data[data['time']>1500]
+        if len(oaa)>0:
+            oaa = oaa.iloc[-1,:]
+        if len(caa)>0:
+            caa = caa.iloc[-1,:]
+        intraday = data[(data['time']>=930) & (data['time']<=1500)]
+        return oaa,intraday,caa
+    
+    def _prep_cal_(self,data):
+        data['volume'] = cumdiff(data['cumvolume'])
+        data['vwapsum'] = cumdiff(data['cumvwapsum'])
+        data['lul'] = np.logical_and(data['ap1']==0,data['bp1']>0).astype(int)
+        data['ldl'] = np.logical_and(data['ap1']>0,data['bp1']==0).astype(int)
+        data['luvolume'] = data['volume']*data['lul']
+        data['ldvolume'] = data['volume']*data['ldl']
+        data['luvwapsum'] = data['vwapsum']*data['lul']
+        data['ldvwapsum'] = data['vwapsum']*data['ldl']
+        data['ap1'][data['ap1']==0] = np.nan
+        data['bp1'][data['bp1']==0] = np.nan
+        return data
+
+
 
 #%% Class of MBData
 class MBData(HFData):
@@ -315,13 +352,26 @@ class MBData(HFData):
                 print(field)
                 # Read mb1 file
                 mb1 = read_mb1_data(dt,field)
-                mb1 = mb1[mb1.index>930]
                 # Fill nans
-                # Change time
-                mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
-                mb = mb1.groupby(mb1.index).apply(lambda d:self._compound(field,d))
-                pdb.set_trace()
-                a=1
+                mb1.fillna(method='ffill',inplace=True)
+                # Split into open-aa, close-aa and intraday
+                self._split_agg(mb1)
+                
+                #pdb.set_trace()
+                #mb1 = mb1[mb1.index>930]
+                ## Change time
+                #mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
+                #mb = mb1.groupby(mb1.index).apply(lambda d:self._compound(field,d))
+                #pdb.set_trace()
+                #a=1
+
+    def _split_agg(self,data):
+        oaa = data[data.index<=930]
+        caa = data[data.index>=1458]
+        if self.is_before_new_rule:
+            non_sh = np.array(ids_market(data.columns.tolist(),sh=False,sz=True,idx=True))
+            caa.loc[:,non_sh] = np.nan
+        pdb.set_trace()
 
     def _clear_agg_auction(self,data):
         agg_auction = np.array(data.index)>1457
@@ -349,11 +399,10 @@ class MBData(HFData):
         elif field in ['low']:
             cdata = data.min()
         return cdata
-        
 
 #%% Test Codes
 if __name__=='__main__':
     tick = TickData('./ini/mb1.history.ini')
     tick.tick2mb1()
-    mb = MBData('./ini/mb.ini','5')
-    mb.run()
+    #mb = MBData('./ini/mb.ini','5')
+    #mb.run()
