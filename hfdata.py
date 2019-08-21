@@ -250,13 +250,15 @@ class TickData(HFData):
                     mid = (data1['ap1']+data1['bp1'])/2
                     lsp = data1['ap1']-data1['bp1']
                     lspp = lsp/mid
-                    # 5.high,low,sp
+                    # 5.high,low
                     high_df = data_tick.groupby('time')[['tp','high']].max()
                     high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
                     high = high_df.max(axis=1)
                     low_df = data_tick.groupby('time')[['tp','low']].min()
                     low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
                     low = low_df.min(axis=1)
+                    # ntick,sp
+                    ntick = data_tick.groupby('time').size()
                     abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
                     sp = abp_mean['ap1'] - abp_mean['bp1']
                     t02 = time.time()
@@ -347,62 +349,45 @@ class MBData(HFData):
             dir_mb = os.path.join(self.csv_dir,self.sub_dir)
             self.is_before_new_rule = (int(dt)<NEW_RULE_DATE_SH)
             # Loop mb_fields
-            for field in ['low']:
+            for field in ['sp']:
             #for field in self.mb_fields:
                 print(field)
                 # Read mb1 file
                 mb1 = read_mb1_data(dt,field)
                 # Fill nans
-                mb1.fillna(method='ffill',inplace=True)
-                # Split into open-aa, close-aa and intraday
-                self._split_agg(mb1)
-                
-                #pdb.set_trace()
-                #mb1 = mb1[mb1.index>930]
-                ## Change time
-                #mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
-                #mb = mb1.groupby(mb1.index).apply(lambda d:self._compound(field,d))
-                #pdb.set_trace()
-                #a=1
+                mb1 = self._fillna_(field,mb1)
+                # Change time
+                mb1.index = mb1.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
+                pdb.set_trace()
+                # Do the calculation
+                mb = mb1.groupby(mb1.index).apply(lambda d:self._compound_(field,d))
+                pdb.set_trace()
+                a=1
 
-    def _split_agg(self,data):
-        oaa = data[data.index<=930]
-        caa = data[data.index>=1458]
-        if self.is_before_new_rule:
-            non_sh = np.array(ids_market(data.columns.tolist(),sh=False,sz=True,idx=True))
-            caa.loc[:,non_sh] = np.nan
-        pdb.set_trace()
-
-    def _clear_agg_auction(self,data):
-        agg_auction = np.array(data.index)>1457
-        if self.is_before_new_rule:
-            sz = np.array(ids_market(data.columns.tolist(),sh=False,sz=True,idx=False))
-            data.loc[agg_auction,sz] = np.nan
-        else:
-            data.loc[agg_auction,:] = np.nan
-        return data
-
-    def _fillna(self,field,data):
-        if field in []:
-            data = self._clear_agg_auction(data)
-        if field in ['open','tp','high','low']:
+    def _fillna_(self,field,data):
+        if field in ['open','tp','high','low','mid','lsp','lspp','limitup',\
+                'limitdown']:
             data.fillna(method='ffill',inplace=True)
+        elif field in ['luvolume','ldvolume','luvwapsum','ldvwapsum']:
+            data.fillna(0,inplace=True)
         return data
 
-    def _compound(self,field,data):
+    def _compound_(self,field,data):
         if field in ['open']:
             cdata = data.iloc[0,:]
-        elif field in ['tp']:
+        elif field in ['tp','mid','lsp','lspp','limitup','limitdown','vwap']:
             cdata = data.iloc[-1,:]
         elif field in ['high']:
             cdata = data.max()
         elif field in ['low']:
             cdata = data.min()
+        elif field in ['luvolume','ldvolume','luvwapsum','ldvwapsum']:
+            cdata = data.sum()
         return cdata
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/mb1.history.ini')
-    tick.tick2mb1()
-    #mb = MBData('./ini/mb.ini','5')
-    #mb.run()
+    #tick = TickData('./ini/mb1.history.ini')
+    #tick.tick2mb1()
+    mb = MBData('./ini/mb.ini','5')
+    mb.run()
