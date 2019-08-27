@@ -13,6 +13,9 @@ import pdb
 #%% Test Codes
 if __name__=='__main__':
     edate = today()
+    # tickers
+    tickers= Tickers('./ini/mb1.history.ini')
+    tickers.update_and_save()
     # tick
     tick = TickData('./ini/tick.history.ini')
     sdate = date_offset(edate,-5)

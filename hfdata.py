@@ -55,6 +55,23 @@ def chunks(arr,size):
 def cumdiff(sr):
     return sr.diff().fillna(sr)
 
+#%% Class of Tickers
+class Tickers(base_):
+    def __init__(self,fini):
+        super().__init__(fini)
+        self.ticker_types = self.ini.findStringVec('TickerTypes')
+        self.ticker_dir = self.ini.findString('TickerDir')
+        mkdir(self.ticker_dir)
+
+    def update(self):
+        self.tickers_dict = {tp:rq.all_instruments(type=tp) for tp in self.ticker_types}
+
+    def update_and_save(self):
+        self.update()
+        for tp,df in self.tickers_dict.items():
+            df.to_csv(os.path.join(self.ticker_dir,tp+'.csv'),encoding='utf_8_sig',\
+                    index=False)
+
 #%% Class of HFData
 class HFData(base_):
     def __init__(self,fini):
@@ -184,11 +201,11 @@ class TickData(HFData):
                         # Store the DataFrame to the csv
                         d_raw.to_csv(csv_file)
                         # Tar csv
-                        os.system('tar zcPf {} {}'.format(gz_file,csv_file))
+                        os.system('cd {};tar zcPf {} {}'.format(dir_dt,gz_file,csv_file))
                         # Delete csv
                         os.system('rm {}'.format(csv_file))
                 print('{}|{}'.format(dt,instr))
-
+.
     def tick2mb1(self,sdate=None,edate=None):
         # Minute-bar time
         mb1_time = min_bar('1')
@@ -421,8 +438,10 @@ class MBData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/mb1.history.ini')
-    tick.tick2mb1()
+    tickers= Tickers('./ini/mb1.history.ini')
+    tickers.update_and_save()
+    #tick = TickData('./ini/mb1.history.ini')
+    #tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
     #mb.to_csv()
