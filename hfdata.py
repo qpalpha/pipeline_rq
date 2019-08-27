@@ -244,20 +244,23 @@ class TickData(HFData):
                     for v in v_list:
                         exec('{0} = data_v[\'{0}\']'.format(v))
                     vwap = data_v['vwapsum']/data_v['volume']
-                    # 4.mid,lsp,lspp
+                    # 4.limitup,limitdown
+                    if data1['ap1'].isnull().any() or data1['bp1'].isnull().any():
+                        pdb.set_trace()
                     limitup = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
                     limitdown = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
+                    # 5.mid,lsp,lspp
                     mid = (data1['ap1']+data1['bp1'])/2
                     lsp = data1['ap1']-data1['bp1']
                     lspp = lsp/mid
-                    # 5.high,low
+                    # 6.high,low
                     high_df = data_tick.groupby('time')[['tp','high']].max()
                     high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
                     high = high_df.max(axis=1)
                     low_df = data_tick.groupby('time')[['tp','low']].min()
                     low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
                     low = low_df.min(axis=1)
-                    # ntick,sp
+                    # 7.ntick,sp
                     ntick = data_tick.groupby('time').size()
                     abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
                     sp = abp_mean['ap1'] - abp_mean['bp1']
@@ -420,12 +423,12 @@ class MBData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    #tick = TickData('./ini/mb1.history.ini')
-    #tick.tick2mb1()
-    mb = MBData('./ini/mb.ini','5')
-    mb.to_bin()
-    mb.to_csv()
-    mb = MBData('./ini/mb.ini','15')
-    mb.to_csv()
-    mb = MBData('./ini/mb.ini','30')
-    mb.to_csv()
+    tick = TickData('./ini/mb1.history.ini')
+    tick.tick2mb1()
+    #mb = MBData('./ini/mb.ini','5')
+    #mb.to_bin()
+    #mb.to_csv()
+    #mb = MBData('./ini/mb.ini','15')
+    #mb.to_csv()
+    #mb = MBData('./ini/mb.ini','30')
+    #mb.to_csv()
