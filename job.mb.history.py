@@ -8,20 +8,19 @@
 #%% Import Part
 from hfdata import *
 from qpc import *
+import sys
 import pdb
 
 #%% Test Codes
 if __name__=='__main__':
-    edate = today()
-    # tick
-    tick = TickData('./ini/tick.history.ini')
-    sdate = date_offset(edate,-5)
-    tick.get_raw_csv(sdate,edate)
-    # mb1
-    tick = TickData('./ini/mb1.history.ini')
-    sdate = date_offset(edate,-3)
-    tick.tick2mb1(sdate,edate)
-    # mb1->mb5/15/30
+    try:
+        sdate = sys.argv[1]
+    except:
+        sdate = None
+    try:
+        edate = sys.argv[2]
+    except:
+        edate = None
     for minute in ['5','15','30']:
         mb = MBData('./ini/mb.ini',minute)
         mb.to_csv(sdate,edate)
