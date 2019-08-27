@@ -245,8 +245,6 @@ class TickData(HFData):
                         exec('{0} = data_v[\'{0}\']'.format(v))
                     vwap = data_v['vwapsum']/data_v['volume']
                     # 4.limitup,limitdown
-                    if data1['ap1'].isnull().any() or data1['bp1'].isnull().any():
-                        pdb.set_trace()
                     limitup = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
                     limitdown = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
                     # 5.mid,lsp,lspp
