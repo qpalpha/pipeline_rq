@@ -192,7 +192,7 @@ class TickData(HFData):
         ids = self._get_ids_(type)
         # Loop trade_dates
         for dt in trade_dates:
-            dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
+            dir_dt = os.path.join(self.raw_dir,self.sub_dir,type,dt)
             mkdir(dir_dt)
             for ticker in ids:
                 # File name
