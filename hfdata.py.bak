@@ -180,43 +180,32 @@ class TickData(HFData):
         self.freq = 'tick'
         self.sub_dir = 'tick'
         self.tick_file_fields = self.ini.findStringVec('TickFileFields')
-        tkr = Tickers(fini)
-        tkr.update()
-        self.tickers_dict = tkr.tickers_dict
 
     def get_raw_csv(self,sdate=None,edate=None,type='CS'):
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
         trade_dates = get_dates(sdate,edate)
-        # Get ids and ids_rq
-        ids = self._get_ids_(type)
         # Loop trade_dates
         for dt in trade_dates:
             dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
             mkdir(dir_dt)
-            for ticker in ids:
+            for ticker,instr in zip(self.ids_rq,self.ids):
                 # File name
-                csv_file = ticker+'.csv'
-                csv_file_abs = os.path.join(dir_dt,ticker+'.csv')
-                gz_file = os.path.join(dir_dt,ticker+'.tgz')
+                csv_file = instr+'.csv'
+                csv_file_abs = os.path.join(dir_dt,instr+'.csv')
+                gz_file = os.path.join(dir_dt,instr+'.tar.gz')
                 if not os.path.exists(gz_file):
                     d_raw = self.get_tick(ticker,dt)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
                         # Store the DataFrame to the csv
-                        d_raw.to_csv(csv_file_abs)
+                        d_raw.to_csv(csv_file)
                         # Tar csv
                         os.system('cd {};tar zcPf {} {}'.format(dir_dt,gz_file,csv_file))
                         # Delete csv
                         os.system('rm {}'.format(csv_file_abs))
-                print('{}|{}'.format(dt,ticker))
-
-    def _get_ids_(self,type):
-        df = self.tickers_dict[type]
-        if type=='CS':
-            ids = df.order_book_id.sort_values().tolist()
-        return ids
+                print('{}|{}'.format(dt,instr))
 
     def tick2mb1(self,sdate=None,edate=None):
         # Minute-bar time
@@ -450,8 +439,9 @@ class MBData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/mb1.history.ini')
-    tick.get_raw_csv()
+    tickers= Tickers('./ini/mb1.history.ini')
+    tickers.update_and_save()
+    #tick = TickData('./ini/mb1.history.ini')
     #tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
