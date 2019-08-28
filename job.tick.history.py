@@ -21,5 +21,9 @@ if __name__=='__main__':
         edate = sys.argv[2]
     except:
         edate = None
+    try:
+        type = sys.argv[3]
+    except:
+        type = 'CS'
     tick = TickData('./ini/tick.history.ini')
-    tick.get_raw_csv(sdate,edate)
+    tick.get_raw_csv(sdate,edate,type=type)

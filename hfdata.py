@@ -214,7 +214,7 @@ class TickData(HFData):
 
     def _get_ids_(self,type):
         df = self.tickers_dict[type]
-        if type=='CS':
+        if type in ['CS','ETF','INDX','Future','Option']:
             ids = df.order_book_id.sort_values().tolist()
         return ids
 
@@ -451,7 +451,7 @@ class MBData(HFData):
 #%% Test Codes
 if __name__=='__main__':
     tick = TickData('./ini/mb1.history.ini')
-    tick.get_raw_csv()
+    tick.get_raw_csv(type='Future')
     #tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
