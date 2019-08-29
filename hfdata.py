@@ -8,6 +8,7 @@
 #%% Import Part
 import os,sys
 import rqdatac as rq
+import pymysql
 rq.init()
 from qp import *
 from qpc import *
@@ -55,12 +56,22 @@ def chunks(arr,size):
 def cumdiff(sr):
     return sr.diff().fillna(sr)
 
+def df1_sub_df2(df1,df2):
+    df1_tuple = df1.apply(tuple,1)
+    df2_tuple = df2.apply(tuple,1).tolist()
+    idx = [ii for ii,df in df1_tuple.iteritems() if df not in df2_tuple]
+    return df1.loc[idx]
+
 #%% Class of Tickers
 class Tickers(base_):
     def __init__(self,fini):
         super().__init__(fini)
         self.ticker_types = self.ini.findStringVec('TickerTypes')
         self.ticker_dir = self.ini.findString('TickerDir')
+        mkdir(self.ticker_dir)
+        self.id_dir = self.ini.findString('IdDir')
+        mkdir(self.id_dir)
+        self.stock_diff_csv = self.ini.findString('StockDiffCsv')
         mkdir(self.ticker_dir)
 
     def update(self):
@@ -71,6 +82,61 @@ class Tickers(base_):
         for tp,df in self.tickers_dict.items():
             df.to_csv(os.path.join(self.ticker_dir,tp+'.csv'),encoding='utf_8_sig',\
                     index=False)
+
+    def diff2csv(self):
+        # Read StockDiffCsv
+        if os.path.exists(self.stock_diff_csv):
+            old_diff = pd.read_csv(self.stock_diff_csv,dtype='str').fillna(np.nan)
+            os.system('cp {0} {0}.{1}'.format(self.stock_diff_csv,today()))
+        else:
+            old_diff = pd.DataFrame(columns=['S_INFO_WINDCODE','BEGINDATE','ENDDATE',\
+                    'S_INFO_NAME','id','de_listed_date','listed_date','id_rq'])
+        # Read ids.txt
+        qp_ids = all_ids_types_pd()
+        qp_ids = qp_ids[qp_ids=='stock'].index.tolist()
+        type_dict = rq_types_mapping(['stock'])
+        # Read ticker file of rq
+        df = rq_ids_df(type_dict['stock'])[['de_listed_date','listed_date','symbol']]
+        df['id_rq'] = df.index
+        df.index = [id[:6] for id in df.index]
+        df['de_listed_date']= df['de_listed_date'].str.replace('-','')
+        df['listed_date']= df['listed_date'].str.replace('-','')
+        # Difference between ids.txt and ids from rq
+        ids_diff = set(df.index.tolist())-set(qp_ids)
+        diff = df.loc[ids_diff,:]
+        diff = diff[diff['listed_date']!='29991231']
+        new_diff = pd.concat([self._get_missed_ticker_(dd) for dd in diff.iterrows()])\
+                .fillna(np.nan)
+        new_diff.sort_values(by=new_diff.columns.tolist(),inplace=True)
+        new_diff.reset_index(drop=True,inplace=True)
+        # Save csv
+        new_diff.to_csv(self.stock_diff_csv,index=False)
+        # Compare old_diff with new_diff
+        new_not_old = df1_sub_df2(new_diff,old_diff)
+        # Report if new_not_old is not empty
+        if len(new_not_old)>0:
+            raise Exception('New difference of ids occured!\n{}'.format(new_not_old)) 
+        else:
+            os.system('rm {0}.{1}'.format(self.stock_diff_csv,today()))
+
+    def _get_missed_ticker_(self,data):
+        id = data[0]
+        sql = '''
+        SELECT
+            S_INFO_WINDCODE,BEGINDATE,ENDDATE,S_INFO_NAME
+        FROM
+            WINDDF.ASHAREPREVIOUSNAME 
+        WHERE
+            S_INFO_NAME = '{}';
+        '''.format(data[1]['symbol'])
+        conn = pymysql.connect(**gvars.WinddfInfo)
+        data_wind = pd.read_sql(sql,conn)
+        conn.close()
+        data_wind['id'] = id
+        for ii in data[1].index:
+            data_wind[ii] = data[1][ii]
+        data_wind.drop(['symbol'],inplace=True,axis=1)
+        return data_wind
 
 #%% Class of HFData
 class HFData(base_):
@@ -450,8 +516,10 @@ class MBData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    tick = TickData('./ini/mb1.history.ini')
-    tick.get_raw_csv(type='Future')
+    tickers = Tickers('./ini/mb.ini')
+    tickers.diff2csv()
+    #tick = TickData('./ini/mb1.history.ini')
+    #tick.get_raw_csv(type='Future')
     #tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()

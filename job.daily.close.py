@@ -14,7 +14,7 @@ import pdb
 if __name__=='__main__':
     edate = today()
     # tickers
-    tickers= Tickers('./ini/mb1.history.ini')
+    tickers= Tickers('./ini/mb.ini')
     tickers.update_and_save()
     # tick
     tick = TickData('./ini/tick.history.ini')
