@@ -40,7 +40,6 @@ def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
 
 def get_ids_rq():
     # sh:'XSHG',sz:'XSHE'
-    d_ids = {''}
     ids = all_ids()
     ids_index_dict = all_ashare_index_ids_sh()
     ids2 = [ids_index_dict[id] if id in ids_index_dict else id for id in ids]
@@ -72,7 +71,7 @@ class Tickers(base_):
         self.id_dir = self.ini.findString('IdDir')
         mkdir(self.id_dir)
         self.stock_diff_csv = self.ini.findString('StockDiffCsv')
-        mkdir(self.ticker_dir)
+        self.stock_map_csv = self.ini.findString('StockMapCsv')
 
     def update(self):
         self.tickers_dict = {tp:rq.all_instruments(type=tp) for tp in self.ticker_types}
@@ -249,6 +248,7 @@ class TickData(HFData):
         tkr = Tickers(fini)
         tkr.update()
         self.tickers_dict = tkr.tickers_dict
+        self.retry_times = self.ini.findInt('RawTickRetryTimes')
 
     def get_raw_csv(self,sdate=None,edate=None,type='CS'):
         if sdate is None: sdate = self.start_date
@@ -266,7 +266,15 @@ class TickData(HFData):
                 csv_file_abs = os.path.join(dir_dt,ticker+'.csv')
                 gz_file = os.path.join(dir_dt,ticker+'.tgz')
                 if not os.path.exists(gz_file):
-                    d_raw = self.get_tick(ticker,dt)
+                    i = 0
+                    while i<=self.retry_times:
+                        try:
+                            d_raw = self.get_tick(ticker,dt)
+                            break
+                        except:
+                            d_raw = None
+                        finally:
+                            i += 1
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
@@ -276,7 +284,7 @@ class TickData(HFData):
                         os.system('cd {};tar zcPf {} {}'.format(dir_dt,gz_file,csv_file))
                         # Delete csv
                         os.system('rm {}'.format(csv_file_abs))
-                print('{}|{}'.format(dt,ticker))
+                        print('{}|{}|{}'.format(dt,ticker,i))
 
     def _get_ids_(self,type):
         df = self.tickers_dict[type]
@@ -516,10 +524,11 @@ class MBData(HFData):
 
 #%% Test Codes
 if __name__=='__main__':
-    tickers = Tickers('./ini/mb.ini')
-    tickers.diff2csv()
-    #tick = TickData('./ini/mb1.history.ini')
-    #tick.get_raw_csv(type='Future')
+    #print(get_ids_rq())
+    #tickers = Tickers('./ini/mb.ini')
+    #tickers.diff2csv()
+    tick = TickData('./ini/mb1.history.ini')
+    tick.get_raw_csv(sdate='20190903',edate='20190903')
     #tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
