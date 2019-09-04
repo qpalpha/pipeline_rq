@@ -7,6 +7,7 @@
 """
 #%% Import Part
 import os,sys
+import time
 import rqdatac as rq
 import pymysql
 rq.init()
@@ -27,16 +28,16 @@ def min_bar(freq):
         .strftime('%H%M').astype(int))
     return np.hstack([bar1[1:],bar2[1:]])
 
-def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
-    if instruments is None:instruments = all_instruments()
-    d = {'00':sz,
-         '30':sz,
-         '60':sh,
-         '68':sh,
-         'T0':sh,
-         'cs':idx,
-         'ss':idx}
-    return [d[id[:2]] for id in instruments]
+#def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
+#    if instruments is None:instruments = all_instruments()
+#    d = {'00':sz,
+#         '30':sz,
+#         '60':sh,
+#         '68':sh,
+#         'T0':sh,
+#         'cs':idx,
+#         'ss':idx}
+#    return [d[id[:2]] for id in instruments]
 
 def get_ids_rq():
     # sh:'XSHG',sz:'XSHE'
@@ -61,6 +62,55 @@ def df1_sub_df2(df1,df2):
     idx = [ii for ii,df in df1_tuple.iteritems() if df not in df2_tuple]
     return df1.loc[idx]
 
+#%% Class of Snapshot
+class Snapshot():
+    def __init__(self):
+        self.ids = all_ids()
+        self.ids_rq = rq2qp_ids().values.tolist()
+        self.snapshot_fields = ['av1','av2','av3','av4','av5','a1','a2','a3','a4','a5',\
+                                'bv1','bv2','bv3','bv4','bv5','b1','b2','b3','b4','b5',\
+                                'high','last','low','open','open_interest','prev_close',\
+                                'prev_settlement','total_turnover','volume','time','date']
+
+    def _get_data(self,data):
+        if not isinstance(data.ask_vols,list):
+            abv = [np.nan]*20
+        else:
+            abv = data.ask_vols+data.asks+data.bid_vols+data.bids
+        dt = data.datetime
+        return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
+            data.prev_close,data.prev_settlement,data.total_turnover,data.volume,\
+            float(dt.strftime('%H%M%S'))]
+
+    def catch(self):
+        # Ticker
+        tickers_dict = {tk_rq:tk for tk_rq,tk in zip(self.ids_rq,self.ids)}
+        # Get current_snapshot
+        data_list = rq.current_snapshot(self.ids_rq)
+        # Time and date vectors
+        dtime = data_list[0].datetime.strftime('%Y%m%d')
+        l_ = len(data_list)
+        dvec = np.full([l_,1],dtime)
+        # Stack data and tickers
+        mat = np.vstack([self._get_data(data) for data in data_list])
+        mat = np.hstack([mat,dvec]).astype(float)
+        tickers = [tickers_dict[data._order_book_id] for data in data_list]
+        # Return
+        self.catch_result = mat,tickers,data_list[0].datetime.strftime('%Y%m%d.%H%M%S')
+        return mat,tickers,dtime
+
+    def save(self,dirs:str=None):
+        self.catch()
+        mat,tickers,dtime = self.catch_result
+        if dirs is None:
+            dir_ss = './snapshot'
+            mkdir(dir_ss)
+            file = os.path.join(dir_ss,dtime+'.csv')
+        else:
+            file = os.path.join(dirs,dtime+'.csv')
+        df = pd.DataFrame(mat,index=tickers,columns=self.snapshot_fields)
+        df.to_csv(file)
+
 #%% Class of Tickers
 class Tickers(base_):
     def __init__(self,fini):
@@ -71,7 +121,6 @@ class Tickers(base_):
         self.id_dir = self.ini.findString('IdDir')
         mkdir(self.id_dir)
         self.stock_diff_csv = self.ini.findString('StockDiffCsv')
-        self.stock_map_csv = self.ini.findString('StockMapCsv')
 
     def update(self):
         self.tickers_dict = {tp:rq.all_instruments(type=tp) for tp in self.ticker_types}
@@ -95,7 +144,7 @@ class Tickers(base_):
         qp_ids = qp_ids[qp_ids=='stock'].index.tolist()
         type_dict = rq_types_mapping(['stock'])
         # Read ticker file of rq
-        df = rq_ids_df(type_dict['stock'])[['de_listed_date','listed_date','symbol']]
+        df = rq_raw_ids_df(type_dict['stock'])[['de_listed_date','listed_date','symbol']]
         df['id_rq'] = df.index
         df.index = [id[:6] for id in df.index]
         df['de_listed_date']= df['de_listed_date'].str.replace('-','')
@@ -143,6 +192,8 @@ class HFData(base_):
         super().__init__(fini)
         # From outside
         self.ids = all_ids()
+        self.ids_types = all_ids_types_pd()
+        self.types_mapping = rq_types_mapping()
         # From ini
         self.raw_dir = self.ini.findString('RawDir')
         mkdir(self.raw_dir)
@@ -178,8 +229,6 @@ class HFData(base_):
         self.start_date = self.ini.findString('StartDate')
         self.end_date = self.ini.findString('EndDate')
         self.trade_dates = get_dates(self.start_date,self.end_date)
-        # Get ids in format of ricequant
-        self.ids_rq = get_ids_rq()
 
     def get_price_mb(self,ids,dt,fields):
         return rq.get_price(ids,start_date=yyyymmdd2yyyy_mm_dd(dt),\
@@ -189,54 +238,6 @@ class HFData(base_):
     def get_tick(self,ticker,dt):
         return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
             end_date=yyyymmdd2yyyy_mm_dd(dt),frequency='tick')
-
-#%% Class of Snapshot
-class Snapshot():
-    def __init__(self):
-        self.ids = all_ids()
-        self.ids_rq = get_ids_rq()
-        self.snapshot_fields = ['av1','av2','av3','av4','av5','a1','a2','a3','a4','a5',\
-                                'bv1','bv2','bv3','bv4','bv5','b1','b2','b3','b4','b5',\
-                                'high','last','low','open','open_interest','prev_close',\
-                                'prev_settlement','total_turnover','volume','time','date']
-
-    def _get_data(self,data):
-        if not isinstance(data.ask_vols,list):
-            abv = [np.nan]*20
-        else:
-            abv = data.ask_vols+data.asks+data.bid_vols+data.bids
-        dt = data.datetime
-        return abv+[data.high,data.last,data.low,data.open,data.open_interest,\
-            data.prev_close,data.prev_settlement,data.total_turnover,data.volume,\
-            float(dt.strftime('%H%M%S'))]
-
-    def catch(self):
-        # Ticker
-        tickers_dict = {tk_rq:tk for tk_rq,tk in zip(self.ids_rq,self.ids)}
-        # Get current_snapshot
-        data_list = rq.current_snapshot(self.ids_rq)
-        # Time and date vectors
-        dtime = data_list[0].datetime.strftime('%Y%m%d')
-        l_ = len(data_list)
-        dvec = np.full([l_,1],dtime)
-        # Stack data and tickers
-        mat = np.vstack([self._get_data(data) for data in data_list])
-        mat = np.hstack([mat,dvec]).astype(float)
-        tickers = [tickers_dict[data._order_book_id] for data in data_list]
-        # Return
-        self.catch_result = mat,tickers,data_list[0].datetime.strftime('%Y%m%d.%H%M%S')
-        return mat,tickers,dtime
-
-    def save(self,dirs:str=None):
-        mat,tickers,dtime = self.catch_result
-        if dirs is None:
-            dir_ss = './snapshot'
-            mkdir(dir_ss)
-            file = os.path.join(dir_ss,dtime+'.csv')
-        else:
-            file = os.path.join(dirs,dtime+'.csv')
-        df = pd.DataFrame(mat,index=tickers,columns=self.snapshot_fields)
-        df.to_csv(file)
 
 #%% Class of TickData
 class TickData(HFData):
@@ -275,9 +276,11 @@ class TickData(HFData):
                             d_raw = None
                         finally:
                             i += 1
+                            time.sleep(3)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
+                        pdb.set_trace()
                         # Store the DataFrame to the csv
                         d_raw.to_csv(csv_file_abs)
                         # Tar csv
@@ -303,18 +306,20 @@ class TickData(HFData):
         # Loop trade_dates
         for dt in trade_dates:
             t1 = time.time()
-            raw_dir_dt = os.path.join(self.raw_dir,self.sub_dir,dt)
             instr_market = ids_market(self.ids)
+            # Current rq ticker mapping
+            self.ids_pd = rq2qp_ids(dt)
             # Init oaa and caa dataframe
             #   oaa : open aggregate auction
             #   caa : close aggregate auction
             oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
             caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
-            for ii,(instr,mkt) in enumerate(zip(self.ids,instr_market)):
+            for ii,((instr_qp,instr),(_,type),mkt) in enumerate(zip(self.ids_pd.items(),self.ids_types.items(),instr_market)):
+                rq_type = self.types_mapping[type]
                 # If is old shanghai stocks
                 is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt=='sh')
                 # gz file name
-                gz_file = os.path.join(raw_dir_dt,instr+'.tar.gz')
+                gz_file = os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
                 if os.path.exists(gz_file):
                     t01 = time.time()
                     # Modify data_tick for later calculation
@@ -528,8 +533,8 @@ if __name__=='__main__':
     #tickers = Tickers('./ini/mb.ini')
     #tickers.diff2csv()
     tick = TickData('./ini/mb1.history.ini')
-    tick.get_raw_csv(sdate='20190903',edate='20190903')
-    #tick.tick2mb1()
+    #tick.get_raw_csv(sdate='20100101',edate='20190903')
+    tick.tick2mb1()
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
     #mb.to_csv()
