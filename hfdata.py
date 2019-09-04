@@ -280,7 +280,6 @@ class TickData(HFData):
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
-                        pdb.set_trace()
                         # Store the DataFrame to the csv
                         d_raw.to_csv(csv_file_abs)
                         # Tar csv
@@ -332,8 +331,8 @@ class TickData(HFData):
                     # Split by time
                     oaa,data_tick,caa = self._split_by_time_(data_tick)
                     # Open-aa
-                    if len(oaa)>0:oaa_df.loc[instr,:] = oaa
-                    if len(caa)>0:caa_df.loc[instr,:] = caa
+                    if len(oaa)>0:oaa_df.loc[instr_qp,:] = oaa
+                    if len(caa)>0:caa_df.loc[instr_qp,:] = caa
                     # Prep-calculation
                     data_tick = self._prep_cal_(data_tick)
                     # ------------------ Calculation ------------------ 
@@ -373,35 +372,39 @@ class TickData(HFData):
                     t02 = time.time()
                     # DataFrame -> csv -> gz
                     for field in self.mb_fields:
-                        dir_dest = os.path.join(self.csv_dir,'mb1',field)
+                        dir_dest = os.path.join(self.csv_dir,'ashare','mb1',field)
                         mkdir(dir_dest)
-                        csv_dest = os.path.join(dir_dest,dt+'.csv')
-                        gz_dest = os.path.join(dir_dest,dt+'.tar.gz')
+                        csv_dest = dt+'.csv'
+                        csv_dest_abs = os.path.join(dir_dest,csv_dest)
+                        gz_dest = dt+'.tar.gz'
                         new = eval(field)
                         new.name = field
                         new = new.to_frame()
-                        new['ticker'] = instr
-                        #new = pd.DataFrame(new,columns=['ticker',field])
+                        new['ticker'] = instr_qp
                         if ii==0:
-                            os.system('rm {} -rf'.format(csv_dest))
-                            new.to_csv(csv_dest,mode='a')
+                            os.system('rm {} -rf'.format(csv_dest_abs))
+                            new.to_csv(csv_dest_abs,mode='a')
                         else:
-                            new.to_csv(csv_dest,header=False,mode='a')
+                            new.to_csv(csv_dest_abs,header=False,mode='a')
                         if (ii==(len(self.ids)-1)):
                             # Tar csv
-                            os.system('tar zcPf {} {}'.format(gz_dest,csv_dest))
+                            os.system('cd {};tar zcPf {} {}'.format(dir_dest,gz_dest,csv_dest))
                             # Delete csv
-                            os.system('rm {}'.format(csv_dest))
+                            os.system('rm {}'.format(csv_dest_abs))
                     t03 = time.time()
             # oaa and caa
-            oaa_dest_dir = os.path.join(self.csv_dir,'aa','open')
+            oaa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','open')
             mkdir(oaa_dest_dir)
-            caa_dest_dir = os.path.join(self.csv_dir,'aa','close')
+            caa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','close')
             mkdir(caa_dest_dir)
             oaa_dest_csv = os.path.join(oaa_dest_dir,dt+'.csv')
             caa_dest_csv = os.path.join(caa_dest_dir,dt+'.csv')
             oaa_df.to_csv(oaa_dest_csv)
+            os.system('cd {};tar zcPf {} {}'.format(oaa_dest_dir,dt+'.tgz',dt+'.csv'))
+            os.system('rm {}'.format(oaa_dest_csv))
             caa_df.to_csv(caa_dest_csv)
+            os.system('cd {};tar zcPf {} {}'.format(caa_dest_dir,dt+'.tgz',dt+'.csv'))
+            os.system('rm {}'.format(caa_dest_csv))
             t2 = time.time()
             print('** {} is done, costs {:.2f}s **'.format(dt,t2-t1))    
 
@@ -453,8 +456,8 @@ class MBData(HFData):
         # Loop trade_dates
         for dt in trade_dates:
             t1 = time.time()
-            dir_mb1 = os.path.join(self.csv_dir,'mb1')
-            dir_mb = os.path.join(self.csv_dir,self.sub_dir)
+            dir_mb1 = os.path.join(self.csv_dir,'ashare/mb1')
+            dir_mb = os.path.join(self.csv_dir,'ashare',self.sub_dir)
             self.is_before_new_rule = (int(dt)<NEW_RULE_DATE_SH)
             # Loop mb_fields
             #for field in ['vwap','vwapsum']:
@@ -532,12 +535,12 @@ if __name__=='__main__':
     #print(get_ids_rq())
     #tickers = Tickers('./ini/mb.ini')
     #tickers.diff2csv()
-    tick = TickData('./ini/mb1.history.ini')
+    #tick = TickData('./ini/mb1.history.ini')
     #tick.get_raw_csv(sdate='20100101',edate='20190903')
-    tick.tick2mb1()
-    #mb = MBData('./ini/mb.ini','5')
+    #tick.tick2mb1()
+    mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
-    #mb.to_csv()
+    mb.to_csv()
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
