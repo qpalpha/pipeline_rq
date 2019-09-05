@@ -277,7 +277,6 @@ class TickData(HFData):
     def tick2mb1(self,sdate=None,edate=None):
         # Minute-bar time
         mb1_time = min_bar('1')
-        mb1_time_aa = np.hstack([930,mb1_time])
         # Trade dates
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
@@ -391,7 +390,7 @@ class TickData(HFData):
     def _add_time_(self,data,is_old_sh):
         index = pd.to_datetime(data.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
         data['time']= index.strftime('%H%M').astype(int)
-        data['time'][data['time']<930] = 925
+        data['time'][data['time']<=930] = 925
         if not is_old_sh: 
             data['time'][data['time']>1457] = 1501
         else:
@@ -399,13 +398,13 @@ class TickData(HFData):
         return data
 
     def _split_by_time_(self,data):
-        oaa = data[data['time']<930]
+        oaa = data[data['time']<=930]
         caa = data[data['time']>1500]
         if len(oaa)>0:
             oaa = oaa.iloc[-1,:]
         if len(caa)>0:
             caa = caa.iloc[-1,:]
-        intraday = data[(data['time']>=930) & (data['time']<=1500)]
+        intraday = data[(data['time']>=931) & (data['time']<=1500)]
         return oaa,intraday,caa
     
     def _prep_cal_(self,data):
