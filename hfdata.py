@@ -28,26 +28,6 @@ def min_bar(freq):
         .strftime('%H%M').astype(int))
     return np.hstack([bar1[1:],bar2[1:]])
 
-#def ids_market(instruments:list=None,sh='sh',sz='sz',idx='idx')->list:
-#    if instruments is None:instruments = all_instruments()
-#    d = {'00':sz,
-#         '30':sz,
-#         '60':sh,
-#         '68':sh,
-#         'T0':sh,
-#         'cs':idx,
-#         'ss':idx}
-#    return [d[id[:2]] for id in instruments]
-
-def get_ids_rq():
-    # sh:'XSHG',sz:'XSHE'
-    ids = all_ids()
-    ids_index_dict = all_ashare_index_ids_sh()
-    ids2 = [ids_index_dict[id] if id in ids_index_dict else id for id in ids]
-    ids_mkt = ids_market(ids,sh='.XSHG',sz='.XSHE',idx='.XSHG')
-    ids_rq = [id+mkt for id,mkt in zip(ids2,ids_mkt)]
-    return ids_rq
-
 def chunks(arr,size):
     sindex = np.arange(0,len(arr),size)
     eindex = np.append(sindex[1:],len(arr)-1)
@@ -276,7 +256,7 @@ class TickData(HFData):
                             d_raw = None
                         finally:
                             i += 1
-                            time.sleep(3)
+                        time.sleep(3)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
@@ -376,7 +356,7 @@ class TickData(HFData):
                         mkdir(dir_dest)
                         csv_dest = dt+'.csv'
                         csv_dest_abs = os.path.join(dir_dest,csv_dest)
-                        gz_dest = dt+'.tar.gz'
+                        gz_dest = dt+'.tgz'
                         new = eval(field)
                         new.name = field
                         new = new.to_frame()
