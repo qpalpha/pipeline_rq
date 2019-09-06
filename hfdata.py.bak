@@ -230,7 +230,6 @@ class TickData(HFData):
         tkr.update()
         self.tickers_dict = tkr.tickers_dict
         self.retry_times = self.ini.findInt('RawTickRetryTimes')
-        self.instr_market_pd = pd.Series(ids_market(self.ids),index=self.ids)
 
     def get_raw_csv(self,sdate=None,edate=None,type='CS'):
         if sdate is None: sdate = self.start_date
@@ -276,7 +275,6 @@ class TickData(HFData):
         return ids
 
     def tick2mb1(self,sdate=None,edate=None):
-        max_len = max([len(f) for f in self.tick_file_fields])
         # Minute-bar time
         mb1_time = min_bar('1')
         # Trade dates
@@ -286,113 +284,89 @@ class TickData(HFData):
         # Loop trade_dates
         for dt in trade_dates:
             t1 = time.time()
+            instr_market = ids_market(self.ids)
             # Current rq ticker mapping
             self.ids_pd = rq2qp_ids(dt)
-            # ------------------ Calculation for Agg-auction ------------------ 
-            # oaa and caa
-            oaa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','open')
-            mkdir(oaa_dest_dir)
-            caa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','close')
-            mkdir(caa_dest_dir)
-            oaa_dest_csv = os.path.join(oaa_dest_dir,dt+'.csv')
-            oaa_dest_gz = os.path.join(oaa_dest_dir,dt+'.tgz')
-            caa_dest_csv = os.path.join(caa_dest_dir,dt+'.csv')
-            caa_dest_gz = os.path.join(caa_dest_dir,dt+'.tgz')
             # Init oaa and caa dataframe
             #   oaa : open aggregate auction
             #   caa : close aggregate auction
-            if os.path.exists(oaa_dest_gz):
-                oaa_df = pd.read_csv(oaa_dest_gz,compression='gzip')
-                oaa_df = pd.DataFrame(oaa_df,index=self.ids)
-            else:
-                oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
-            if os.path.exists(caa_dest_gz):
-                caa_df = pd.read_csv(caa_dest_gz,compression='gzip')
-                caa_df = pd.DataFrame(caa_df,index=self.ids)
-            else:
-                caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
-            # ------------------ Calculation for Intraday ------------------ 
-            # Loop mb_fields
-            for field in self.mb_fields:
-                t01 = time.time()
-                dir_dest = os.path.join(self.csv_dir,'ashare','mb1',field)
-                mkdir(dir_dest)
-                csv_dest_abs = os.path.join(dir_dest,dt+'.csv')
-                gz_dest_abs = os.path.join(dir_dest,dt+'.tgz')
-                # If .tgz file exists, ids_to_cal = difference between all_ids() and existed ids.
-                if os.path.exists(gz_dest_abs):
+            oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
+            caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
+            for ii,((instr_qp,instr),(_,type),mkt) in enumerate(zip(self.ids_pd.items(),self.ids_types.items(),instr_market)):
+                if (ii>=3) and (ii<=(len(all_ids())-3)):
+                    continue
+                rq_type = self.types_mapping[type]
+                # If is old shanghai stocks
+                is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt=='sh')
+                # gz file name
+                gz_file = os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
+                if os.path.exists(gz_file):
+                    print(instr_qp)
+                    # Modify data_tick for later calculation
                     try:
-                        os.system('cd {};tar zxf {}'.format(dir_dest,dt+'.tgz'))
-                        data_exist = pd.read_csv(gz_dest_abs,compression='gzip',\
-                                dtype={'ticker':str})
-                        data_exist.rename(columns={data_exist.columns[0]:'time'},inplace=True)
-                        data_exist = data_exist[data_exist['time'].notnull()]
-                        data_exist['time'] = data_exist['time'].astype(int)
-                        ids_exist = data_exist['ticker'].drop_duplicates().tolist()
-                        ids_to_cal = list(set(self.ids)-set(ids_exist))
-                        ids_to_cal.sort()
-                        mode = 'add'
+                        data_tick = read_tick_data_file(gz_file).rename(columns=self.mb_feilds_rename_dict)
                     except:
-                        ids_to_cal = self.ids
-                        mode = 'new'
-                # Else, ids_to_cal is all_ids()
-                else:
-                    ids_to_cal = self.ids
-                    mode = 'new'
-                ids_pd = self.ids_pd[ids_to_cal]
-                ids_types = self.ids_types[ids_to_cal]
-                instr_market = self.instr_market_pd[ids_to_cal]
-                ids_info_pd = pd.concat([ids_pd,ids_types,instr_market],axis=1)
-                # Loop ids
-                n_cal = []
-                if mode=='new':
-                    os.system('rm {} -rf'.format(csv_dest_abs))
-                for ii,(instr_qp,(instr,type,mkt)) in enumerate(ids_info_pd.iterrows()):
-                    #if (ii>1) and (ii<(len(ids_info_pd)-1)):
-                    #    continue
-                    rq_type = self.types_mapping[type]
-                    # If is old shanghai stocks
-                    is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt=='sh')
-                    # gz file name
-                    gz_file = os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
-                    if os.path.exists(gz_file):
-                        # Modify data_tick for later calculation
-                        try:
-                            data_tick = read_tick_data_file(gz_file).rename(columns=\
-                                    self.mb_feilds_rename_dict)
-                        except:
-                            continue
-                        # Add time
-                        data_tick = self._add_time_(data_tick,is_old_sh)
-                        # Split by time
-                        oaa,data_tick,caa = self._split_by_time_(data_tick)
-                        # Open-aa
-                        if len(oaa)>0:oaa_df.loc[instr_qp,:] = oaa
-                        if len(caa)>0:caa_df.loc[instr_qp,:] = caa
-                        # Intrday
-                        if len(data_tick)>0:
-                            n_cal += [instr_qp]
-                            # Prep-calculation
-                            data_tick = self._prep_cal_(data_tick)
-                            # Calculation
-                            new = self._tick2mb1_field_(field,data_tick)
-                            new.name = field
-                            new = new.to_frame()
-                            new['ticker'] = instr_qp
-                            # Save
-                            if not os.path.exists(csv_dest_abs):
-                                new.to_csv(csv_dest_abs)
-                            else:
-                                new.to_csv(csv_dest_abs,header=False,mode='a')
-                # Exclude data between 1130 and 1300
-                with open(csv_dest_abs,'r') as f:lines = f.readlines()
-                with open(csv_dest_abs,'w') as f:
-                    for line in lines:
-                        try:
-                            if not 1131<=int(line.split(',')[0])<=1300:f.write(line)
-                        except:
-                            f.write(line)
-                # Tar and delete csv
+                        continue
+                    # Add time
+                    data_tick = self._add_time_(data_tick,is_old_sh)
+                    # Split by time
+                    oaa,data_tick,caa = self._split_by_time_(data_tick)
+                    # Open-aa
+                    if len(oaa)>0:oaa_df.loc[instr_qp,:] = oaa
+                    if len(caa)>0:caa_df.loc[instr_qp,:] = caa
+                    # Prep-calculation
+                    data_tick = self._prep_cal_(data_tick)
+                    # ------------------ Calculation ------------------ 
+                    # 1.open
+                    open = data_tick.groupby('time')['tp'].first()
+                    # 2.ap,bp,av,bv,tp
+                    data1 = data_tick.groupby('time').last()
+                    tp = data1['tp']
+                    ap1,ap2,ap3,ap4,ap5 = data1['ap1'],data1['ap2'],data1['ap3'],data1['ap4'],data1['ap5']
+                    bp1,bp2,bp3,bp4,bp5 = data1['bp1'],data1['bp2'],data1['bp3'],data1['bp4'],data1['bp5']
+                    av1,av2,av3,av4,av5 = data1['av1'],data1['av2'],data1['av3'],data1['av4'],data1['av5']    
+                    bv1,bv2,bv3,bv4,bv5 = data1['bv1'],data1['bv2'],data1['bv3'],data1['bv4'],data1['bv5'] 
+                    # 3.volumes and vwapsums
+                    v_list = ['volume','vwapsum','luvolume','ldvolume','luvwapsum','ldvwapsum']
+                    data_v = data_tick.groupby('time')[v_list].sum()
+                    for v in v_list:
+                        exec('{0} = data_v[\'{0}\']'.format(v))
+                    vwap = data_v['vwapsum']/data_v['volume']
+                    # 4.limitup,limitdown
+                    limitup = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
+                    limitdown = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
+                    # 5.mid,lsp,lspp
+                    mid = (data1['ap1']+data1['bp1'])/2
+                    lsp = data1['ap1']-data1['bp1']
+                    lspp = lsp/mid
+                    # 6.high,low
+                    high_df = data_tick.groupby('time')[['tp','high']].max()
+                    high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
+                    high = high_df.max(axis=1)
+                    low_df = data_tick.groupby('time')[['tp','low']].min()
+                    low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
+                    low = low_df.min(axis=1)
+                    # 7.ntick,sp
+                    ntick = data_tick.groupby('time').size()
+                    abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
+                    sp = abp_mean['ap1'] - abp_mean['bp1']
+                    # DataFrame -> csv -> gz
+                    for field in self.mb_fields:
+                        dir_dest = os.path.join(self.csv_dir,'ashare','mb1',field)
+                        mkdir(dir_dest)
+                        csv_dest = dt+'.csv'
+                        csv_dest_abs = os.path.join(dir_dest,csv_dest)
+                        new = eval(field)
+                        new.name = field
+                        new = new.to_frame()
+                        new['ticker'] = instr_qp
+                        if ii==0:
+                            os.system('rm {} -rf'.format(csv_dest_abs))
+                            new.to_csv(csv_dest_abs,mode='a')
+                        else:
+                            new.to_csv(csv_dest_abs,header=False,mode='a')
+            # Tar and delete csv
+            for field in self.mb_fields:
                 dir_dest = os.path.join(self.csv_dir,'ashare','mb1',field)
                 mkdir(dir_dest)
                 csv_dest = dt+'.csv'
@@ -402,11 +376,13 @@ class TickData(HFData):
                 os.system('cd {};tar zcPf {} {}'.format(dir_dest,gz_dest,csv_dest))
                 # Delete csv
                 os.system('rm {}'.format(csv_dest_abs))
-                # Print info 
-                t02 = time.time()
-                print('{}|{}{}|{:.2f}s|{}|{}'.format(dt,field,' '*(max_len-len(field)),t02-t01,\
-                        mode,','.join(n_cal)))
             # oaa and caa
+            oaa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','open')
+            mkdir(oaa_dest_dir)
+            caa_dest_dir = os.path.join(self.csv_dir,'ashare/aa','close')
+            mkdir(caa_dest_dir)
+            oaa_dest_csv = os.path.join(oaa_dest_dir,dt+'.csv')
+            caa_dest_csv = os.path.join(caa_dest_dir,dt+'.csv')
             oaa_df.to_csv(oaa_dest_csv)
             os.system('cd {};tar zcPf {} {}'.format(oaa_dest_dir,dt+'.tgz',dt+'.csv'))
             os.system('rm {}'.format(oaa_dest_csv))
@@ -414,55 +390,7 @@ class TickData(HFData):
             os.system('cd {};tar zcPf {} {}'.format(caa_dest_dir,dt+'.tgz',dt+'.csv'))
             os.system('rm {}'.format(caa_dest_csv))
             t2 = time.time()
-            print('----------- {}|{:.2f}s -----------'.format(dt,t2-t1))    
-    
-    def _tick2mb1_field_(self,field,data_tick):
-        data1 = data_tick.groupby('time').last()
-        # 1.open
-        if field in ['open']:
-            new = data_tick.groupby('time')['tp'].first()
-        # 2.ap,bp,av,bv,tp
-        elif field in ['ap1','ap2','ap3','ap4','ap5','bp1','bp2','bp3','bp4','bp5',\
-                       'av1','av2','av3','av4','av5','bv1','bv2','bv3','bv4','bv5',\
-                       'tp']:
-            new = data1[field]
-        # 3.volumes and vwapsums
-        elif field in ['volume','vwapsum','luvolume','ldvolume','luvwapsum','ldvwapsum']:
-            new = data_tick.groupby('time')[field].sum()
-        elif field in ['vwap']:
-            vwapsum = self._tick2mb1_field_('vwapsum',data_tick)
-            volume = self._tick2mb1_field_('volume',data_tick)
-            new = vwapsum/volume
-        # 4.limitup,limitdown
-        elif field in ['limitup']:
-            new = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
-        elif field in ['limitdown']:
-            new = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
-        # 5.mid,lsp,lspp
-        elif field in ['mid']:
-            new = (data1['ap1']+data1['bp1'])/2
-        elif field in ['lsp']:
-            new = data1['ap1']-data1['bp1']
-        elif field in ['lspp']:
-            lsp = self._tick2mb1_field_('lsp',data_tick)
-            mid = self._tick2mb1_field_('mid',data_tick)
-            new = lsp/mid
-        # 6.high,low
-        elif field in ['high']:
-            high_df = data_tick.groupby('time')[['tp','high']].max()
-            high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
-            new = high_df.max(axis=1)
-        elif field in ['low']:
-            low_df = data_tick.groupby('time')[['tp','low']].min()
-            low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
-            new = low_df.min(axis=1)
-        # 7.ntick,sp
-        elif field in ['ntick']:
-            new = data_tick.groupby('time').size()
-        elif field in ['sp']:
-            abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
-            new = abp_mean['ap1'] - abp_mean['bp1']
-        return new
+            print('** {} is done, costs {:.2f}s **'.format(dt,t2-t1))    
 
     def _add_time_(self,data,is_old_sh):
         index = pd.to_datetime(data.index.astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
@@ -593,7 +521,7 @@ if __name__=='__main__':
     #tickers.diff2csv()
     tick = TickData('./ini/mb1.history.ini')
     #tick.get_raw_csv(sdate='20190101',edate='20190903')
-    tick.tick2mb1(sdate='20190404',edate='20190430')
+    tick.tick2mb1(sdate='20180102',edate='20180102')
     #mb = MBData('./ini/mb.ini','5')
     #mb.to_bin()
     #mb.to_csv()
