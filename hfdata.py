@@ -314,7 +314,6 @@ class TickData(HFData):
             # Init oaa and caa dataframe
             #   oaa : open aggregate auction
             #   caa : close aggregate auction
-            pdb.set_trace()
             if os.path.exists(oaa_tgz_abs):
                 oaa_df = pd.read_csv(oaa_tgz_abs,compression='gzip')
                 oaa_df = pd.DataFrame(oaa_df,index=self.ids)
