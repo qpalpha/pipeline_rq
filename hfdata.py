@@ -314,13 +314,14 @@ class TickData(HFData):
             # Init oaa and caa dataframe
             #   oaa : open aggregate auction
             #   caa : close aggregate auction
-            if os.path.exists(oaa_tgz):
-                oaa_df = pd.read_csv(oaa_tgz,compression='gzip')
+            pdb.set_trace()
+            if os.path.exists(oaa_tgz_abs):
+                oaa_df = pd.read_csv(oaa_tgz_abs,compression='gzip')
                 oaa_df = pd.DataFrame(oaa_df,index=self.ids)
             else:
                 oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
-            if os.path.exists(caa_tgz):
-                caa_df = pd.read_csv(caa_tgz,compression='gzip')
+            if os.path.exists(caa_tgz_abs):
+                caa_df = pd.read_csv(caa_tgz_abs,compression='gzip')
                 caa_df = pd.DataFrame(caa_df,index=self.ids)
             else:
                 caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
