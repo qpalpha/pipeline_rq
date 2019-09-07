@@ -324,7 +324,7 @@ class TickData(HFData):
             # ------------------ Calculation for Intraday ------------------ 
             ids_info_pd = pd.concat([self.ids_pd,self.ids_types,self.instr_market_pd],axis=1)
             # Find to_do_list
-            to_do_list = [id for id in self.ids if self._tick_tgz_exists_(dt,id) and (not self._mb1_csv_exists_(dt,id))]
+            to_do_list = [id for id in self.ids if self._tick_tgz_exists_(dt,id) and (not self._mb1_tgzexists_(dt,id))]
             ids_info_pd = ids_info_pd.loc[to_do_list,:]
             # Loop ids
             for ii,(instr_qp,(instr,type,mkt)) in enumerate(ids_info_pd.iterrows()):
@@ -351,6 +351,10 @@ class TickData(HFData):
                     mb1_df.to_csv(csv_abs)
             # csv->tgz
             os.system('sh csv2tgz.sh {}'.format(path))
+            # oaa and caa
+            self._zip_(oaa_df,oaa_dir,dt)
+            self._zip_(caa_df,caa_dir,dt)
+            t2 = time.time()
             # print
             t2 = time.time()
             print('{}|{:.2f}s'.format(dt,t2-t1))
@@ -392,11 +396,11 @@ class TickData(HFData):
         # Return
         return data
 
-    def _mb1_csv_(self,dt,id):
-        return os.path.join(self.csv_dir,'ashare','mb1',dt,id+'.csv')
+    def _mb1_tgz(self,dt,id):
+        return os.path.join(self.csv_dir,'ashare','mb1',dt,id+'.tgz')
 
-    def _mb1_csv_exists_(self,dt,id):
-        return os.path.exists(self._mb1_csv_(dt,id))
+    def _mb1_tgzexists_(self,dt,id):
+        return os.path.exists(self._mb1_tgz(dt,id))
 
     def _tick_tgz_(self,dt,id):
         rq_type = self.types_mapping[self.ids_types[id]]
