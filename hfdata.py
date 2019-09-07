@@ -290,6 +290,11 @@ class TickData(HFData):
         max_len = max([len(f) for f in self.tick_file_fields])-2
         # Minute-bar time
         mb1_time = min_bar('1')
+        # oaa and caa
+        oaa_dir = os.path.join(self.csv_dir,'ashare/aa','open')
+        mkdir(oaa_dir)
+        caa_dir = os.path.join(self.csv_dir,'ashare/aa','close')
+        mkdir(caa_dir)
         # Trade dates
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
@@ -304,8 +309,6 @@ class TickData(HFData):
             self.ids_pd = rq2qp_ids(dt)
             # ------------------ Calculation for Agg-auction ------------------ 
             # oaa and caa
-            oaa_dir = os.path.join(self.csv_dir,'ashare/aa','open')
-            caa_dir = os.path.join(self.csv_dir,'ashare/aa','close')
             oaa_csv,oaa_tgz,oaa_csv_abs,oaa_tgz_abs = self.csv_tgz_name(oaa_dir,dt)
             caa_csv,caa_tgz,caa_csv_abs,caa_tgz_abs = self.csv_tgz_name(caa_dir,dt)
             # Init oaa and caa dataframe
