@@ -236,6 +236,26 @@ class HFData(base_):
         # Delete csv
         os.system('rm {}'.format(csv_abs))
 
+    def _tick_tgz_(self,dt,id):
+        rq_type = self.types_mapping[self.ids_types[id]]
+        instr = self.ids_pd[id]
+        return os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
+    
+    def _tick_tgz_exists_(self,dt,id):
+        return os.path.exists(self._tick_tgz_(dt,id))
+
+    def _mb1_tgz_(self,dt,id):
+        return os.path.join(self.csv_dir,'ashare','mb1',dt,id+'.tgz')
+
+    def _mb1_tgz_exists_(self,dt,id):
+        return os.path.exists(self._mb1_tgz_(dt,id))
+
+    def _mb_csv_(self,dt,id,freq):
+        return os.path.join(self.csv_dir,'ashare','mb'+freq,dt,id+'.csv')
+
+    def _mb_csv_exists_(self,dt,id,freq):
+        return os.path.exists(self._mb_csv_(dt,id,freq))
+
 #%% Class of TickData
 class TickData(HFData):
     def __init__(self,fini):
@@ -262,7 +282,7 @@ class TickData(HFData):
             for ticker in ids:
                 # File name
                 csv,tgz,csv_abs,tgz_abs = self.csv_tgz_name(dir_dt,ticker)
-                if not os.path.exists(tgz):
+                if not os.path.exists(tgz_abs):
                     i = 0
                     while i<=self.retry_times:
                         try:
@@ -400,20 +420,6 @@ class TickData(HFData):
         # Return
         return data
 
-    def _mb1_tgz_(self,dt,id):
-        return os.path.join(self.csv_dir,'ashare','mb1',dt,id+'.tgz')
-
-    def _mb1_tgz_exists_(self,dt,id):
-        return os.path.exists(self._mb1_tgz_(dt,id))
-
-    def _tick_tgz_(self,dt,id):
-        rq_type = self.types_mapping[self.ids_types[id]]
-        instr = self.ids_pd[id]
-        return os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
-    
-    def _tick_tgz_exists_(self,dt,id):
-        return os.path.exists(self._tick_tgz_(dt,id))
-
     def _tick2mb1_field_1(self,field,data_tick):
         data1 = data_tick.groupby('time').last()
         # 1.open
@@ -510,94 +516,87 @@ class MBData(HFData):
         if sdate is None: sdate = self.start_date
         if edate is None: edate = self.end_date
         trade_dates = get_dates(sdate,edate)
+        dir_mb = os.path.join(self.csv_dir,'ashare',self.sub_dir)
         # Loop trade_dates
         for dt in trade_dates:
             t1 = time.time()
-            dir_mb1 = os.path.join(self.csv_dir,'ashare/mb1')
-            dir_mb = os.path.join(self.csv_dir,'ashare',self.sub_dir)
-            self.is_before_new_rule = (int(dt)<NEW_RULE_DATE_SH)
-            # Loop mb_fields
-            #for field in ['vwap','vwapsum']:
-            for field in self.mb_fields:
+            dir_mb_dt = os.path.join(dir_mb,dt)
+            mkdir(dir_mb_dt)
+            dir_mb1_dt = os.path.join(self.csv_dir,'ashare/mb1',dt)
+            # Find to_do_list
+            to_do_list = [id for id in self.ids if self._mb1_tgz_exists_(dt,id) and not self._mb_csv_exists_(dt,id,self.freq)]
+            # Loop ids
+            for id in to_do_list:
+                tgz_abs = os.path.join(dir_mb1_dt,id+'.tgz')
+                csv_abs = os.path.join(dir_mb_dt,id+'.csv')
                 # Read mb1 file
-                mb1 = read_mb1_data(dt,field)
+                mb1 = read_mb1_data_file(tgz_abs)
                 # Fill nans
-                mb1 = self._fillna_(field,mb1)
+                mb1 = self._fillna_(mb1)
                 # Change time
                 mb1 = self._change_time_(mb1)
                 # Do the calculation
-                if field in ['sp']:
-                    ntick1 = read_mb1_data(dt,'ntick')
-                    ntick1 = self._fillna_('ntick',ntick1)
-                    ntick1 = self._change_time_(ntick1)
-                    sum_sp1 = ntick1*mb1
-                    ntick = ntick1.groupby(ntick1.index).sum()
-                    sum_sp = sum_sp1.groupby(sum_sp1.index).sum()
-                    mb = sum_sp/ntick
-                elif field in ['vwap']:
-                    vwapsum1 = read_mb1_data(dt,'vwapsum')
-                    vwapsum1 = self._fillna_('vwapsum',vwapsum1)
-                    vwapsum1 = self._change_time_(vwapsum1)
-                    vwapsum = vwapsum1.groupby(vwapsum1.index).sum()
-                    volume1 = read_mb1_data(dt,'volume')
-                    volume1 = self._fillna_('volume',volume1)
-                    volume1 = self._change_time_(volume1)
-                    volume = volume1.groupby(volume1.index).sum()
-                    mb = vwapsum/volume
-                elif field in ['vwapsum','volume','ntick']:
-                    mb = eval(field)
-                else:
-                    mb = mb1.groupby(mb1.index).apply(lambda d:self._compound_(field,d))
+                mb = mb1.groupby(mb1.index).apply(lambda d:self._compound_(d))
                 # Save csv
-                dir_dest = os.path.join(dir_mb,field)
-                mkdir(dir_dest)
-                csv_mb = os.path.join(dir_dest,dt+'.csv')
-                mb.to_csv(csv_mb)
+                mb.to_csv(csv_abs,index_label='time')
             t2 = time.time()
             # Print log
             print('mb{0}|{1}|{2:.2f}s'.format(self.freq,dt,t2-t1))
+
+    def _change_time_(self,data):
+        data.index = data.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
+        return data
+        
+    def _fillna_(self,data):
+        origin_columns = data.columns.tolist()
+        fill0_fields = ['luvolume','ldvolume','luvwapsum','ldvwapsum','ntick','volume','vwapsum']
+        ffill_fields = list(set(data.columns)-set(fill0_fields))
+        data[fill0_fields] = data[fill0_fields].fillna(0)
+        data[ffill_fields] = data[ffill_fields].fillna(method='ffill')
+        data = pd.DataFrame(data,columns=origin_columns)
+        return data
+
+    def _compound_(self,data):
+        mb = pd.Series(index=data.columns)
+        # open
+        mb['open'] = data['open'].values[0]
+        # high
+        mb['high'] = np.max(data['high'].values)
+        #mb['high'] = data['high'].max()
+        # low
+        mb['low'] = np.min(data['low'].values)
+        #mb['low'] = data['low'].min()
+        # luvolume ldvolume luvwapsum ldvwapsum
+        fields2sum = ['luvolume','ldvolume','luvwapsum','ldvwapsum','vwapsum','volume','ntick']
+        mb[fields2sum] = np.sum(data[fields2sum].values,axis=0)
+        # vwap
+        mb['vwap'] = mb['vwapsum']/mb['volume']
+        # sp
+        mb['sp'] = np.sum(data['ntick'].values*data['sp'].values)/mb['ntick']
+        # ap1~bv5,tp,limitup/down,mid,lsp,lspp
+        fields2last = ['ap1','ap2','ap3','ap4','ap5','bp1','bp2','bp3','bp4','bp5',\
+                       'av1','av2','av3','av4','av5','bv1','bv2','bv3','bv4','bv5',\
+                       'tp','limitup','limitdown','mid','lsp','lspp']
+        mb[fields2last] = data[fields2last].values[-1,:]
+        return mb
 
     def to_bin(self,sdate='20100101'):
         pdb.set_trace()
         pass 
             
 
-    def _change_time_(self,data):
-        data.index = data.index.map(lambda t:self.MB[np.where(t<=self.MB)[0][0]])
-        return data
-        
-    def _fillna_(self,field,data):
-        if field in ['luvolume','ldvolume','luvwapsum','ldvwapsum','ntick',\
-                'volume','vwapsum']:
-            data.fillna(0,inplace=True)
-        else:
-            data.fillna(method='ffill',inplace=True)
-        return data
-
-    def _compound_(self,field,data):
-        if field in ['open']:
-            cdata = data.iloc[0,:]
-        elif field in ['high']:
-            cdata = data.max()
-        elif field in ['low']:
-            cdata = data.min()
-        elif field in ['luvolume','ldvolume','luvwapsum','ldvwapsum']:
-            cdata = data.sum()
-        else:
-            cdata = data.iloc[-1,:]
-        return cdata
-
 #%% Test Codes
 if __name__=='__main__':
     #print(get_ids_rq())
     #tickers = Tickers('./ini/mb.ini')
     #tickers.diff2csv()
-    tick = TickData('./ini/mb1.history.ini')
+    #tick = TickData('./ini/mb1.history.ini')
     #tick.get_raw_csv(sdate='20190201',edate='20190903')
-    tick.tick2mb1(sdate='20190101',edate='20190110')
+    #tick.tick2mb1(sdate='20190101',edate='20190110')
     #mb = MBData('./ini/mb.ini','5')
+    mb = MBData('./ini/mb.ini','15')
     #mb.to_bin()
-    #mb.to_csv()
+    mb.to_csv()
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
