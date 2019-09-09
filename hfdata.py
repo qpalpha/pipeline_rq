@@ -250,11 +250,11 @@ class HFData(base_):
     def _mb1_tgz_exists_(self,dt,id):
         return os.path.exists(self._mb1_tgz_(dt,id))
 
-    def _mb_csv_(self,dt,id,freq):
-        return os.path.join(self.csv_dir,'ashare','mb'+freq,dt,id+'.csv')
+    def _mb_tgz_(self,dt,id,freq):
+        return os.path.join(self.csv_dir,'ashare','mb'+freq,dt,id+'.tgz')
 
-    def _mb_csv_exists_(self,dt,id,freq):
-        return os.path.exists(self._mb_csv_(dt,id,freq))
+    def _mb_tgz_exists_(self,dt,id,freq):
+        return os.path.exists(self._mb_tgz_(dt,id,freq))
 
 #%% Class of TickData
 class TickData(HFData):
@@ -420,54 +420,6 @@ class TickData(HFData):
         # Return
         return data
 
-    def _tick2mb1_field_1(self,field,data_tick):
-        data1 = data_tick.groupby('time').last()
-        # 1.open
-        if field in ['open']:
-            new = data_tick.groupby('time')['tp'].first()
-        # 2.ap,bp,av,bv,tp
-        elif field in ['ap1','ap2','ap3','ap4','ap5','bp1','bp2','bp3','bp4','bp5',\
-                       'av1','av2','av3','av4','av5','bv1','bv2','bv3','bv4','bv5',\
-                       'tp']:
-            new = data1[field]
-        # 3.volumes and vwapsums
-        elif field in ['volume','vwapsum','luvolume','ldvolume','luvwapsum','ldvwapsum']:
-            new = data_tick.groupby('time')[field].sum()
-        elif field in ['vwap']:
-            vwapsum = self._tick2mb1_field_('vwapsum',data_tick)
-            volume = self._tick2mb1_field_('volume',data_tick)
-            new = vwapsum/volume
-        # 4.limitup,limitdown
-        elif field in ['limitup']:
-            new = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
-        elif field in ['limitdown']:
-            new = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
-        # 5.mid,lsp,lspp
-        elif field in ['mid']:
-            new = (data1['ap1']+data1['bp1'])/2
-        elif field in ['lsp']:
-            new = data1['ap1']-data1['bp1']
-        elif field in ['lspp']:
-            lsp = self._tick2mb1_field_('lsp',data_tick)
-            mid = self._tick2mb1_field_('mid',data_tick)
-            new = lsp/mid
-        # 6.high,low
-        elif field in ['high']:
-            high_df = data_tick.groupby('time')[['tp','high']].max()
-            high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
-            new = high_df.max(axis=1)
-        elif field in ['low']:
-            low_df = data_tick.groupby('time')[['tp','low']].min()
-            low_df.loc[low_df['low'].duplicated(),'low'] = np.nan
-            new = low_df.min(axis=1)
-        # 7.ntick,sp
-        elif field in ['ntick']:
-            new = data_tick.groupby('time').size()
-        elif field in ['sp']:
-            abp_mean = data_tick.groupby('time')['ap1','bp1'].mean()
-            new = abp_mean['ap1'] - abp_mean['bp1']
-        return new
-
     def _add_time_(self,data,is_old_sh):
         index = pd.to_datetime(data.index.astype(int).astype(str),format='%H%M%S')+pd.DateOffset(minutes=1)
         times = np.array(index.strftime('%H%M').astype(int))
@@ -524,7 +476,7 @@ class MBData(HFData):
             mkdir(dir_mb_dt)
             dir_mb1_dt = os.path.join(self.csv_dir,'ashare/mb1',dt)
             # Find to_do_list
-            to_do_list = [id for id in self.ids if self._mb1_tgz_exists_(dt,id) and not self._mb_csv_exists_(dt,id,self.freq)]
+            to_do_list = [id for id in self.ids if self._mb1_tgz_exists_(dt,id) and not self._mb_tgz_exists_(dt,id,self.freq)]
             # Loop ids
             for id in to_do_list:
                 tgz_abs = os.path.join(dir_mb1_dt,id+'.tgz')
@@ -540,6 +492,8 @@ class MBData(HFData):
                 # Save csv
                 mb.to_csv(csv_abs,index_label='time')
             t2 = time.time()
+            # csv->tgz
+            os.system('sh csv2tgz.sh {}'.format(dir_mb_dt))
             # Print log
             print('mb{0}|{1}|{2:.2f}s'.format(self.freq,dt,t2-t1))
 
