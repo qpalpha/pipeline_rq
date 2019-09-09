@@ -279,6 +279,8 @@ class TickData(HFData):
                         # Save and tar csv
                         self._zip_(d_raw,dir_dt,ticker)
                         print('{}|{}|{}'.format(dt,ticker,i))
+                else:
+                    print('{}|{}|{}'.format(dt,ticker,'exists'))
 
     def _get_ids_(self,type):
         df = self.tickers_dict[type]
