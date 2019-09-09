@@ -287,7 +287,6 @@ class TickData(HFData):
         return ids
 
     def tick2mb1(self,sdate=None,edate=None):
-        max_len = max([len(f) for f in self.tick_file_fields])-2
         # Minute-bar time
         mb1_time = min_bar('1')
         # oaa and caa
@@ -315,19 +314,19 @@ class TickData(HFData):
             #   oaa : open aggregate auction
             #   caa : close aggregate auction
             if os.path.exists(oaa_tgz_abs):
-                oaa_df = pd.read_csv(oaa_tgz_abs,compression='gzip')
+                oaa_df = pd.read_csv(oaa_tgz_abs,compression='gzip',index_col=0)
                 oaa_df = pd.DataFrame(oaa_df,index=self.ids)
             else:
                 oaa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
             if os.path.exists(caa_tgz_abs):
-                caa_df = pd.read_csv(caa_tgz_abs,compression='gzip')
+                caa_df = pd.read_csv(caa_tgz_abs,compression='gzip',index_col=0)
                 caa_df = pd.DataFrame(caa_df,index=self.ids)
             else:
                 caa_df = pd.DataFrame(index=self.ids,columns=self.tick_file_fields)
             # ------------------ Calculation for Intraday ------------------ 
             ids_info_pd = pd.concat([self.ids_pd,self.ids_types,self.instr_market_pd],axis=1)
             # Find to_do_list
-            to_do_list = [id for id in self.ids if self._tick_tgz_exists_(dt,id) and (not self._mb1_tgzexists_(dt,id))]
+            to_do_list = [id for id in self.ids if self._tick_tgz_exists_(dt,id) and (not self._mb1_tgz_exists_(dt,id))]
             ids_info_pd = ids_info_pd.loc[to_do_list,:]
             # Loop ids
             for ii,(instr_qp,(instr,type,mkt)) in enumerate(ids_info_pd.iterrows()):
@@ -399,11 +398,11 @@ class TickData(HFData):
         # Return
         return data
 
-    def _mb1_tgz(self,dt,id):
+    def _mb1_tgz_(self,dt,id):
         return os.path.join(self.csv_dir,'ashare','mb1',dt,id+'.tgz')
 
-    def _mb1_tgzexists_(self,dt,id):
-        return os.path.exists(self._mb1_tgz(dt,id))
+    def _mb1_tgz_exists_(self,dt,id):
+        return os.path.exists(self._mb1_tgz_(dt,id))
 
     def _tick_tgz_(self,dt,id):
         rq_type = self.types_mapping[self.ids_types[id]]
