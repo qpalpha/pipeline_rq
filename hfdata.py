@@ -556,19 +556,17 @@ class MBData(HFData):
                 volume = readm2df_3d(os.path.join(dir_bin,'volume.b'+self.freq+'.bin'))
                 values = np.array((limitup.values==0) & (limitdown.values==0) & (volume.values>0),\
                         dtype=float)
-                # Save bin
-                os.system('rm {} -rf'.format(fbin))
-                print('[{}] removed'.format(fbin))
             else:
                 # Read old data
                 if os.path.exists(fbin):
                     t1 = time.time()
                     df = readm2df_3d(fbin)
-                    dates_to_do = list(set(trade_dates)-set(df.index))
+                    dates_to_do = list(set(trade_dates)-set(df.index[:-self.n_recal_days]))
+                    pdb.set_trace()
                     # Get the to-do dates
                     df = DataFrame3D(df,index=trade_dates,columns=self.ids,depths=MB_str)
                     t2 = time.time()
-                    print('[{}] loaded and removed|{:.2f}s'.format(fbin,t2-t1))
+                    print('[{}] loaded|{:.2f}s'.format(fbin,t2-t1))
                 else:
                     # Get the to-do dates
                     dates_to_do = trade_dates
@@ -593,8 +591,9 @@ class MBData(HFData):
                 # Fillna
                 df.fillna(0)
                 values = df.values
-                # rm bin
-                os.system('rm {} -rf'.format(fbin))
+            # rm bin
+            os.system('rm {} -rf'.format(fbin))
+            print('[{}] removed'.format(fbin))
             # Save bin
             save_binary_array_3d(fbin,ta,trade_dates,self.ids,MB_str)
             t02 = time.time()
