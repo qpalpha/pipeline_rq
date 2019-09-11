@@ -554,12 +554,11 @@ class MBData(HFData):
                 limitup = readm2df_3d(os.path.join(dir_bin,'limitup.b'+self.freq+'.bin'))
                 limitdown = readm2df_3d(os.path.join(dir_bin,'limitdown.b'+self.freq+'.bin'))
                 volume = readm2df_3d(os.path.join(dir_bin,'volume.b'+self.freq+'.bin'))
-                ta = np.array((limitup.values==0) & (limitdown.values==0) & (volume.values>0),\
+                values = np.array((limitup.values==0) & (limitdown.values==0) & (volume.values>0),\
                         dtype=float)
                 # Save bin
                 os.system('rm {} -rf'.format(fbin))
                 print('[{}] removed'.format(fbin))
-                save_binary_array_3d(fbin,ta,trade_dates,self.ids,MB_str)
             else:
                 # Read old data
                 if os.path.exists(fbin):
@@ -593,10 +592,11 @@ class MBData(HFData):
                     print('mb{}|{}|{}|{:.2f}s'.format(self.freq,field_bin,dt,t2-t1))
                 # Fillna
                 df.fillna(0)
+                values = df.values
                 # rm bin
                 os.system('rm {} -rf'.format(fbin))
-                # Save bin
-                save_binary_array_3d(fbin,df.values,df.index,df.columns,df.depths)
+            # Save bin
+            save_binary_array_3d(fbin,ta,trade_dates,self.ids,MB_str)
             t02 = time.time()
             print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
 
