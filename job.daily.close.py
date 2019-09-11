@@ -25,7 +25,11 @@ if __name__=='__main__':
     tick = TickData('./ini/mb1.history.ini')
     sdate = date_offset(edate,-3)
     tick.tick2mb1(sdate,edate)
-    ## mb1->mb5/15/30
-    #for minute in ['5','15','30']:
-    #    mb = MBData('./ini/mb.ini',minute)
-    #    mb.to_csv(sdate,edate)
+    # mb1->mb5/15/30
+    for minute in ['5','15','30']:
+        mb = MBData('./ini/mb.ini',minute)
+        mb.to_csv(sdate,edate)
+    # mb->bin
+    for minute in ['5','15','30']:
+        mb = MBData('./ini/mb.ini',minute)
+        mb.to_bin(edate=edate)

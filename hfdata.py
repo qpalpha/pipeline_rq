@@ -463,6 +463,10 @@ class MBData(HFData):
         self.freq = freq
         self.sub_dir = 'mb'+freq
         self.MB = min_bar(freq)
+        bin_categories = self.ini.findStringVec('BinCategories')
+        bin2csv_fields = self.ini.findStringVec('Bin2CsvFields')
+        self.bin_csv_mapping = {bin:csv for bin,csv in zip(bin_categories,bin2csv_fields)}
+        self.n_recal_days = self.ini.findInt('BinNumRecalDays')
 
     def to_csv(self,sdate=None,edate=None):
         if sdate is None: sdate = self.start_date
@@ -516,10 +520,8 @@ class MBData(HFData):
         mb['open'] = data['open'].values[0]
         # high
         mb['high'] = np.max(data['high'].values)
-        #mb['high'] = data['high'].max()
         # low
         mb['low'] = np.min(data['low'].values)
-        #mb['low'] = data['low'].min()
         # luvolume ldvolume luvwapsum ldvwapsum
         fields2sum = ['luvolume','ldvolume','luvwapsum','ldvwapsum','vwapsum','volume','ntick']
         mb[fields2sum] = np.sum(data[fields2sum].values,axis=0)
@@ -534,10 +536,69 @@ class MBData(HFData):
         mb[fields2last] = data[fields2last].values[-1,:]
         return mb
 
-    def to_bin(self,sdate='20100101'):
-        pdb.set_trace()
-        pass 
-            
+    def to_bin(self,sdate='20080101',edate=None):
+    #def to_bin(self,sdate='20180101',edate=None):
+        # Min bar in string format
+        MB_str = [str(b) for b in self.MB]
+        # Dates
+        if edate is None: edate = today()
+        trade_dates = get_dates(sdate,edate)
+        # Dirs
+        dir_bin = os.path.join(self.bin_dir,'b'+self.freq)
+        dir_csv = os.path.join(self.csv_dir,'ashare/mb'+self.freq)
+        # Loop fields
+        for field_bin,field_csv in self.bin_csv_mapping.items():
+            t01 = time.time()
+            fbin = os.path.join(dir_bin,field_bin+'.b'+self.freq+'.bin')
+            if field_bin=='tradingallowed':
+                limitup = readm2df_3d(os.path.join(dir_bin,'limitup.b'+self.freq+'.bin'))
+                limitdown = readm2df_3d(os.path.join(dir_bin,'limitdown.b'+self.freq+'.bin'))
+                volume = readm2df_3d(os.path.join(dir_bin,'volume.b'+self.freq+'.bin'))
+                ta = np.array((limitup.values==0) & (limitdown.values==0) & (volume.values>0),\
+                        dtype=float)
+                # Save bin
+                os.system('rm {} -rf'.format(fbin))
+                print('[{}] removed'.format(fbin))
+                save_binary_array_3d(fbin,ta,trade_dates,self.ids,MB_str)
+            else:
+                # Read old data
+                if os.path.exists(fbin):
+                    t1 = time.time()
+                    df = readm2df_3d(fbin)
+                    dates_to_do = list(set(trade_dates)-set(df.index))
+                    # Get the to-do dates
+                    df = DataFrame3D(df,index=trade_dates,columns=self.ids,depths=MB_str)
+                    t2 = time.time()
+                    print('[{}] loaded and removed|{:.2f}s'.format(fbin,t2-t1))
+                else:
+                    # Get the to-do dates
+                    dates_to_do = trade_dates
+                    df = DataFrame3D(index=trade_dates,columns=self.ids,depths=MB_str)
+                    print('{} not found'.format(fbin))
+                # Get the to-do dates
+                dates_to_do.sort()
+                # Loop dates_to_do
+                for dt in dates_to_do:
+                    t1 = time.time()
+                    dir_csv_dt = os.path.join(dir_csv,dt)
+                    # Read tgzs
+                    data_dict = {tgz.replace('.tgz',''):pd.read_csv(os.path.join(dir_csv_dt,tgz),\
+                            compression='gzip',index_col=0).dropna()[field_csv] \
+                            for tgz in os.listdir(dir_csv_dt)}
+                    data_df = pd.DataFrame(data_dict,columns=self.ids)
+                    # Assign
+                    df[dt,:,:] = data_df.T.values
+                    # Log
+                    t2 = time.time()
+                    print('mb{}|{}|{}|{:.2f}s'.format(self.freq,field_bin,dt,t2-t1))
+                # Fillna
+                df.fillna(0)
+                # rm bin
+                os.system('rm {} -rf'.format(fbin))
+                # Save bin
+                save_binary_array_3d(fbin,df.values,df.index,df.columns,df.depths)
+            t02 = time.time()
+            print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
 
 #%% Test Codes
 if __name__=='__main__':
@@ -547,10 +608,10 @@ if __name__=='__main__':
     #tick = TickData('./ini/mb1.history.ini')
     #tick.get_raw_csv(sdate='20190201',edate='20190903')
     #tick.tick2mb1(sdate='20190101',edate='20190110')
-    #mb = MBData('./ini/mb.ini','5')
-    mb = MBData('./ini/mb.ini','15')
-    #mb.to_bin()
-    mb.to_csv()
+    mb = MBData('./ini/mb.ini','30')
+    #mb = MBData('./ini/mb.ini','15')
+    mb.to_bin(edate='20180810')
+    #mb.to_csv()
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
