@@ -540,7 +540,8 @@ class MBData(HFData):
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
-        if edate is None: edate = today()
+        if (edate is None) or (edate=='today'): edate = today()
+        elif edate=='yesterday': edate = yesterday()
         trade_dates = get_dates(sdate,edate)
         # Dirs
         dir_bin = os.path.join(self.bin_dir,'b'+self.freq)
