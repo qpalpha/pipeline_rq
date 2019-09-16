@@ -292,7 +292,7 @@ class TickData(HFData):
                             d_raw = None
                         finally:
                             i += 1
-                        time.sleep(3)
+                        #time.sleep(3)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
                         d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
@@ -537,7 +537,6 @@ class MBData(HFData):
         return mb
 
     def to_bin(self,sdate='20080101',edate=None):
-    #def to_bin(self,sdate='20180101',edate=None):
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
@@ -562,7 +561,6 @@ class MBData(HFData):
                     t1 = time.time()
                     df = readm2df_3d(fbin)
                     dates_to_do = list(set(trade_dates)-set(df.index[:-self.n_recal_days]))
-                    pdb.set_trace()
                     # Get the to-do dates
                     df = DataFrame3D(df,index=trade_dates,columns=self.ids,depths=MB_str)
                     t2 = time.time()
@@ -580,7 +578,7 @@ class MBData(HFData):
                     dir_csv_dt = os.path.join(dir_csv,dt)
                     # Read tgzs
                     data_dict = {tgz.replace('.tgz',''):pd.read_csv(os.path.join(dir_csv_dt,tgz),\
-                            compression='gzip',index_col=0).dropna()[field_csv] \
+                            compression='gzip',index_col=0).dropna(how='all')[field_csv] \
                             for tgz in os.listdir(dir_csv_dt)}
                     data_df = pd.DataFrame(data_dict,columns=self.ids)
                     # Assign
@@ -595,7 +593,7 @@ class MBData(HFData):
             os.system('rm {} -rf'.format(fbin))
             print('[{}] removed'.format(fbin))
             # Save bin
-            save_binary_array_3d(fbin,ta,trade_dates,self.ids,MB_str)
+            save_binary_array_3d(fbin,values,trade_dates,self.ids,MB_str)
             t02 = time.time()
             print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
 
@@ -609,7 +607,7 @@ if __name__=='__main__':
     #tick.tick2mb1(sdate='20190101',edate='20190110')
     mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
-    mb.to_bin(edate='20180810')
+    mb.to_bin(edate='20190913')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
