@@ -19,6 +19,7 @@ import pdb
 
 #%% Constant variables
 NEW_RULE_DATE_SH = 20180820
+FIRST_DATE_TO_USE_TICK_FOR_INDX = 20140101
 
 #%% Functions
 def min_bar(freq):
@@ -211,10 +212,9 @@ class HFData(base_):
         self.end_date = self.ini.findString('EndDate')
         self.trade_dates = get_dates(self.start_date,self.end_date)
 
-    def get_price_mb(self,ids,dt,fields):
-        return rq.get_price(ids,start_date=yyyymmdd2yyyy_mm_dd(dt),\
-            end_date=yyyymmdd2yyyy_mm_dd(dt),fields=fields,frequency=self.freq,\
-            adjust_type='none')
+    def get_price_mb(self,ticker,dt,freq):
+        return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
+            end_date=yyyymmdd2yyyy_mm_dd(dt),frequency=freq,adjust_type='none')
 
     def get_tick(self,ticker,dt):
         return rq.get_price(ticker,start_date=yyyymmdd2yyyy_mm_dd(dt),\
@@ -239,7 +239,7 @@ class HFData(base_):
     def _tick_tgz_(self,dt,id):
         rq_type = self.types_mapping[self.ids_types[id]]
         instr = self.ids_pd[id]
-        return os.path.join(self.raw_dir,self.sub_dir,rq_type,dt,instr+'.tgz')
+        return os.path.join(self.raw_dir,self.sub_dir(rq_type,dt),rq_type,dt,instr+'.tgz')
     
     def _tick_tgz_exists_(self,dt,id):
         return os.path.exists(self._tick_tgz_(dt,id))
@@ -261,13 +261,19 @@ class TickData(HFData):
     def __init__(self,fini):
         super().__init__(fini)
         self.freq = 'tick'
-        self.sub_dir = 'tick'
+        #self.sub_dir = 'tick'
         self.tick_file_fields = self.ini.findStringVec('TickFileFields')
         tkr = Tickers(fini)
         tkr.update()
         self.tickers_dict = tkr.tickers_dict
         self.retry_times = self.ini.findInt('RawTickRetryTimes')
         self.instr_market_pd = pd.Series(ids_market(self.ids),index=self.ids)
+
+    def sub_dir(self,type,dt):
+        return 'mb1' if self._use_mb_condition_(type,dt) else 'tick'
+
+    def _use_mb_condition_(self,type,dt):
+        return (int(dt)<FIRST_DATE_TO_USE_TICK_FOR_INDX) and (type in ['INDX','index'])
 
     def get_raw_csv(self,sdate=None,edate=None,type='CS'):
         if sdate is None: sdate = self.start_date
@@ -277,16 +283,21 @@ class TickData(HFData):
         ids = self._get_ids_(type)
         # Loop trade_dates
         for dt in trade_dates:
-            dir_dt = os.path.join(self.raw_dir,self.sub_dir,type,dt)
+            dir_dt = os.path.join(self.raw_dir,self.sub_dir(type,dt),type,dt)
             mkdir(dir_dt)
             for ticker in ids:
+                # Whether use mb
+                if_use_mb = self._use_mb_condition_(type,dt)
                 # File name
                 csv,tgz,csv_abs,tgz_abs = self.csv_tgz_name(dir_dt,ticker)
                 if not os.path.exists(tgz_abs):
                     i = 0
                     while i<=self.retry_times:
                         try:
-                            d_raw = self.get_tick(ticker,dt)
+                            if if_use_mb:
+                                d_raw = self.get_price_mb(ticker,dt,'1m')
+                            else:
+                                d_raw = self.get_tick(ticker,dt)
                             break
                         except:
                             d_raw = None
@@ -295,7 +306,8 @@ class TickData(HFData):
                         #time.sleep(3)
                     if d_raw is not None:
                         d_raw.index = d_raw.index.strftime('%H%M%S')
-                        d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
+                        if not if_use_mb:
+                            d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
                         # Save and tar csv
                         self._zip_(d_raw,dir_dt,ticker)
                         print('{}|{}|{}'.format(dt,ticker,i))
@@ -356,23 +368,36 @@ class TickData(HFData):
                 is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt in ['sh','idx'])
                 # Read tick tgz file
                 tick_tgz = self._tick_tgz_(dt,instr_qp)
-                data_tick = read_tick_data_file(tick_tgz).rename(columns=\
-                        self.mb_feilds_rename_dict)
-                # Add time
-                data_tick = self._add_time_(data_tick,is_old_sh)
-                # Split by time
-                oaa,data_tick,caa = self._split_by_time_(data_tick)
-                # Open-aa
-                if len(oaa)>0:oaa_df.loc[instr_qp,:] = oaa
-                if len(caa)>0:caa_df.loc[instr_qp,:] = caa
-                # Intrday
-                if len(data_tick)>0:
-                    # Prep-calculation
-                    data_tick = self._prep_cal_(data_tick)
-                    mb1_df = pd.DataFrame(self._tick2mb1_field_(data_tick))
-                    # Save csv
-                    csv_abs = os.path.join(path,instr_qp+'.csv')
-                    mb1_df.to_csv(csv_abs)
+                # Whether use mb
+                if_use_mb = self._use_mb_condition_(type,dt)
+                # csv name
+                csv_abs = os.path.join(path,instr_qp+'.csv')
+                if if_use_mb:
+                    data_mb = read_tick_data_file(tick_tgz)
+                    if len(data_mb)>0:
+                        data_mb.index = (data_mb.index/100).astype(int)
+                        data_mb.index.name = 'time'
+                        data_mb = np.round(pd.DataFrame(data_mb.rename(columns={'close':'tp',\
+                                'total_turnover':'vwapsum'}),columns=self.mb_fields),3)
+                        # Save csv
+                        data_mb.to_csv(csv_abs)
+                else:
+                    data_tick = read_tick_data_file(tick_tgz).rename(columns=\
+                            self.mb_feilds_rename_dict)
+                    # Add time
+                    data_tick = self._add_time_(data_tick,is_old_sh)
+                    # Split by time
+                    oaa,data_tick,caa = self._split_by_time_(data_tick)
+                    # Open-aa
+                    if len(oaa)>0:oaa_df.loc[instr_qp,:] = oaa
+                    if len(caa)>0:caa_df.loc[instr_qp,:] = caa
+                    # Intrday
+                    if len(data_tick)>0:
+                        # Prep-calculation
+                        data_tick = self._prep_cal_(data_tick)
+                        mb1_df = pd.DataFrame(self._tick2mb1_field_(data_tick))
+                        # Save csv
+                        mb1_df.to_csv(csv_abs)
             # csv->tgz
             os.system('sh csv2tgz.sh {}'.format(path))
             # oaa and caa
@@ -604,14 +629,15 @@ if __name__=='__main__':
     #print(get_ids_rq())
     #tickers = Tickers('./ini/mb.ini')
     #tickers.diff2csv()
-    #tick = TickData('./ini/mb1.history.ini')
-    #tick.get_raw_csv(sdate='20190201',edate='20190903')
-    #tick.tick2mb1(sdate='20180820',edate='20180820')
+    tick = TickData('./ini/mb1.history.ini')
+    #tick.get_raw_csv(sdate='20131225',edate='20140105',type='INDX')
+    #tick.get_raw_csv(sdate='20131225',edate='20140105')
+    tick.tick2mb1(sdate='20131230',edate='20140102')
     #tick.tick2mb1(sdate='20180817',edate='20180817')
-    mb = MBData('./ini/mb.ini','30')
+    #mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_bin(edate='20190913')
-    mb.to_csv(sdate='20180817',edate='20180820')
+    #mb.to_csv(sdate='20180817',edate='20180820')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
