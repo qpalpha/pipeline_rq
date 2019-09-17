@@ -353,7 +353,7 @@ class TickData(HFData):
             # Loop ids
             for ii,(instr_qp,(instr,type,mkt)) in enumerate(ids_info_pd.iterrows()):
                 # If is old shanghai stocks
-                is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt=='sh')
+                is_old_sh = (int(dt)<NEW_RULE_DATE_SH) and (mkt in ['sh','idx'])
                 # Read tick tgz file
                 tick_tgz = self._tick_tgz_(dt,instr_qp)
                 data_tick = read_tick_data_file(tick_tgz).rename(columns=\
@@ -398,14 +398,14 @@ class TickData(HFData):
         data_v = data_tick.groupby('time')[v_list].sum()
         for v in v_list:
             data[v] = data_v[v]
-        data['vwap'] = data_v['vwapsum']/data_v['volume']
+        data['vwap'] = np.round(data_v['vwapsum']/data_v['volume'],4)
         # 4.limitup,limitdown
         data['limitup'] = np.logical_and(data1['ap1'].isnull(),data1['bp1']>0).astype(int)
         data['limitdown'] = np.logical_and(data1['ap1']>0,data1['bp1'].isnull()).astype(int)
         # 5.mid,lsp,lspp
-        data['mid'] = (data1['ap1']+data1['bp1'])/2
-        data['lsp'] = data1['ap1']-data1['bp1']
-        data['lspp'] = data['lsp']/data['mid']
+        data['mid'] = np.round((data1['ap1']+data1['bp1'])/2,3)
+        data['lsp'] = np.round(data1['ap1']-data1['bp1'],2)
+        data['lspp'] = np.round(data['lsp']/data['mid'],8)
         # 6.high,low
         high_df = data_tick.groupby('time')[['tp','high']].max()
         high_df.loc[high_df['high'].duplicated(),'high'] = np.nan
@@ -526,14 +526,15 @@ class MBData(HFData):
         fields2sum = ['luvolume','ldvolume','luvwapsum','ldvwapsum','vwapsum','volume','ntick']
         mb[fields2sum] = np.sum(data[fields2sum].values,axis=0)
         # vwap
-        mb['vwap'] = mb['vwapsum']/mb['volume']
+        mb['vwap'] = np.round(mb['vwapsum']/mb['volume'],4)
         # sp
-        mb['sp'] = np.sum(data['ntick'].values*data['sp'].values)/mb['ntick']
+        mb['sp'] = np.round(np.sum(data['ntick'].values*data['sp'].values)/mb['ntick'],6)
         # ap1~bv5,tp,limitup/down,mid,lsp,lspp
         fields2last = ['ap1','ap2','ap3','ap4','ap5','bp1','bp2','bp3','bp4','bp5',\
                        'av1','av2','av3','av4','av5','bv1','bv2','bv3','bv4','bv5',\
                        'tp','limitup','limitdown','mid','lsp','lspp']
         mb[fields2last] = data[fields2last].values[-1,:]
+        mb['lspp'] = np.round(mb['lspp'],8)
         return mb
 
     def to_bin(self,sdate='20080101',edate=None):
@@ -605,11 +606,12 @@ if __name__=='__main__':
     #tickers.diff2csv()
     #tick = TickData('./ini/mb1.history.ini')
     #tick.get_raw_csv(sdate='20190201',edate='20190903')
-    #tick.tick2mb1(sdate='20190101',edate='20190110')
+    #tick.tick2mb1(sdate='20180820',edate='20180820')
+    #tick.tick2mb1(sdate='20180817',edate='20180817')
     mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
-    mb.to_bin(edate='20190913')
-    #mb.to_csv()
+    #mb.to_bin(edate='20190913')
+    mb.to_csv(sdate='20180817',edate='20180820')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
