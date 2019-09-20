@@ -182,6 +182,7 @@ class HFData(base_):
         self.csv_dir = self.ini.findString('CsvDir')
         mkdir(self.csv_dir)
         self.bin_dir = self.ini.findString('BinDir')
+        self.month_bin_dir = self.ini.findString('MonthBinDir')
         mkdir(self.bin_dir)
         self.mb_fields = self.ini.findStringVec('MbFields')
         self.mb_feilds_rename_dict = {'last':'tp',
@@ -492,6 +493,7 @@ class MBData(HFData):
         self.bin_csv_mapping = {bin:csv for bin,csv in zip(bin_categories,bin_csv_mapping)}
         self.n_recal_days = self.ini.findInt('BinNumRecalDays')
         self.target_fields = self.ini.findStringVec('BinTargetFields')
+        self.month_target_fields = self.ini.findStringVec('MonthBinTargetFields')
 
     def to_csv(self,sdate=None,edate=None):
         if sdate is None: sdate = self.start_date
@@ -591,7 +593,6 @@ class MBData(HFData):
                 values[(limitup.values==0) & (limitdown.values>0)] = 1
                 values[(limitup.values>0) & (limitdown.values==0)] = 2
                 # dimnames
-                pdb.set_trace()
                 dates,ids = volume.index,volume.columns
             else:
                 # Read old data
@@ -629,13 +630,107 @@ class MBData(HFData):
                 values = df.values
                 dates,ids = trade_dates,self.ids
             # rm bin
-            pdb.set_trace()
             os.system('rm {} -rf'.format(fbin))
             print('[{}] removed'.format(fbin))
             # Save bin
             save_binary_array_3d(fbin,values,dates,ids,MB_str)
             t02 = time.time()
             print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
+
+    def to_month_bin(self,sdate='20080101',edate=None):
+        # Min bar in string format
+        MB_str = [str(b) for b in self.MB]
+        # Dates
+        if (edate is None) or (edate=='today'): edate = today()
+        elif edate=='yesterday': edate = yesterday()
+        trade_dates = get_dates(sdate,edate)
+        # Dates -> Months
+        months = [*set([dt[:6] for dt in trade_dates])]
+        months.sort()
+        # Dirs
+        dir_bin = os.path.join(self.month_bin_dir,'b'+self.freq)
+        dir_csv = os.path.join(self.csv_dir,'ashare/mb'+self.freq)
+        # Loop fields
+        bin_csv_mapping = {b:c for b,c in self.bin_csv_mapping.items() \
+                if b in self.month_target_fields}
+        # Check to-do bins
+        bins_to_do = {field:[m+'.bin' for m in months if self._month_to_do_(dir_bin,field,m)]\
+                for field,_ in bin_csv_mapping.items()}
+        for field_bin,field_csv in bin_csv_mapping.items():
+            dir_field  = os.path.join(dir_bin,field_bin)
+            bins = bins_to_do[field_bin]
+            for bin in bins:
+                t01 = time.time()
+                month = bin[:6]
+                trade_dates_ = [dt for dt in trade_dates if dt[:6]==month]
+                fbin = os.path.join(dir_bin,field_bin,bin)
+                if field_bin=='tradingallowed':
+                    limitup = readm2df_3d(os.path.join(dir_bin,'limitup',month+'.bin'))
+                    limitdown = readm2df_3d(os.path.join(dir_bin,'limitdown',month+'.bin'))
+                    volume = readm2df_3d(os.path.join(dir_bin,'volume',month+'.bin'))
+                    # 0: not allowed to trade
+                    # 1: allowed to buy
+                    # 2: allowed to sell
+                    # 3: allowed both to buy and sell
+                    values = np.zeros(np.shape(volume))
+                    values[(limitup.values==0) & (limitdown.values==0) & (volume.values>0)] = 3
+                    values[(limitup.values==0) & (limitdown.values>0)] = 1
+                    values[(limitup.values>0) & (limitdown.values==0)] = 2
+                    # dimnames
+                    dates,ids = volume.index,volume.columns
+                else:
+                    # Read old data
+                    if os.path.exists(fbin):
+                        t1 = time.time()
+                        df = readm2df_3d(fbin)
+                        # Get the to-do dates
+                        dates_to_do = list(set(trade_dates_)-set(df.index[:\
+                                -max(self.n_recal_days,0)]))
+                        t2 = time.time()
+                        print('[{}] loaded|{:.2f}s'.format(fbin,t2-t1))
+                    else:
+                        # Get the to-do dates
+                        df = np.nan
+                        dates_to_do = trade_dates_
+                        print('[{}] not exists'.format(fbin))
+                    # Get the to-do dates
+                    df = DataFrame3D(df,index=trade_dates_,columns=self.ids,depths=MB_str)
+                    # Loop dates_to_do
+                    for dt in dates_to_do:
+                        t1 = time.time()
+                        dir_csv_dt = os.path.join(dir_csv,dt)
+                        # Read tgzs
+                        data_dict = {tgz.replace('.tgz',''):pd.read_csv(os.path.join(dir_csv_dt,tgz)\
+                                ,compression='gzip',index_col=0).dropna(how='all')[field_csv] \
+                                for tgz in os.listdir(dir_csv_dt)}
+                        data_df = pd.DataFrame(data_dict,columns=self.ids)
+                        # Assign
+                        df[dt,:,:] = data_df.T.values
+                        # Log
+                        t2 = time.time()
+                        print('mb{}|{}|{}|{:.2f}s'.format(self.freq,field_bin,dt,t2-t1))
+                    # Fillna
+                    df.fillna(0)
+                    values = df.values
+                    dates,ids = trade_dates_,self.ids
+                # rm bin
+                os.system('rm {} -rf'.format(fbin))
+                print('[{}] removed'.format(fbin))
+                # Save bin
+                save_binary_array_3d(fbin,values,dates,ids,MB_str)
+                t02 = time.time()
+                print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
+
+    def _month_to_do_(self,dir_bin,field_bin,month):
+        month_today = today()[:6]
+        if month==month_today:
+            return True
+        else:
+            fbin = os.path.join(dir_bin,field_bin,month+'.bin')
+            return not os.path.exists(fbin)
+
+
+
 
 #%% Test Codes
 if __name__=='__main__':
@@ -649,7 +744,8 @@ if __name__=='__main__':
     #tick.tick2mb1(sdate='20180817',edate='20180817')
     mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
-    mb.to_bin(edate='20190916')
+    mb.to_month_bin(sdate='20190801',edate='20190918')
+    #mb.to_bin(edate='20190916')
     #mb.to_csv(sdate='20131230',edate='20140102')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
