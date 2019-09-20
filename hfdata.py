@@ -488,9 +488,10 @@ class MBData(HFData):
         self.sub_dir = 'mb'+freq
         self.MB = min_bar(freq)
         bin_categories = self.ini.findStringVec('BinCategories')
-        bin2csv_fields = self.ini.findStringVec('Bin2CsvFields')
-        self.bin_csv_mapping = {bin:csv for bin,csv in zip(bin_categories,bin2csv_fields)}
+        bin_csv_mapping = self.ini.findStringVec('BinCsvMapping')
+        self.bin_csv_mapping = {bin:csv for bin,csv in zip(bin_categories,bin_csv_mapping)}
         self.n_recal_days = self.ini.findInt('BinNumRecalDays')
+        self.target_fields = self.ini.findStringVec('BinTargetFields')
 
     def to_csv(self,sdate=None,edate=None):
         if sdate is None: sdate = self.start_date
@@ -504,7 +505,8 @@ class MBData(HFData):
             mkdir(dir_mb_dt)
             dir_mb1_dt = os.path.join(self.csv_dir,'ashare/mb1',dt)
             # Find to_do_list
-            to_do_list = [id for id in self.ids if self._mb1_tgz_exists_(dt,id) and not self._mb_tgz_exists_(dt,id,self.freq)]
+            to_do_list = [id for id in self.ids if self._mb1_tgz_exists_(dt,id) and \
+                    not self._mb_tgz_exists_(dt,id,self.freq)]
             # Loop ids
             for id in to_do_list:
                 tgz_abs = os.path.join(dir_mb1_dt,id+'.tgz')
@@ -572,15 +574,22 @@ class MBData(HFData):
         dir_bin = os.path.join(self.bin_dir,'b'+self.freq)
         dir_csv = os.path.join(self.csv_dir,'ashare/mb'+self.freq)
         # Loop fields
-        for field_bin,field_csv in self.bin_csv_mapping.items():
+        bin_csv_mapping = {b:c for b,c in self.bin_csv_mapping.items() if b in self.target_fields}
+        for field_bin,field_csv in bin_csv_mapping.items():
             t01 = time.time()
             fbin = os.path.join(dir_bin,field_bin+'.b'+self.freq+'.bin')
             if field_bin=='tradingallowed':
                 limitup = readm2df_3d(os.path.join(dir_bin,'limitup.b'+self.freq+'.bin'))
                 limitdown = readm2df_3d(os.path.join(dir_bin,'limitdown.b'+self.freq+'.bin'))
                 volume = readm2df_3d(os.path.join(dir_bin,'volume.b'+self.freq+'.bin'))
-                values = np.array((limitup.values==0) & (limitdown.values==0) & (volume.values>0),\
-                        dtype=float)
+                # 0: not allowed to trade
+                # 1: allowed to buy
+                # 2: allowed to sell
+                # 3: allowed both to buy and sell
+                values = np.zeros(np.shape(volume))
+                values[(limitup.values==0) & (limitdown.values==0) & (volume.values>0)] = 3
+                values[(limitup.values==0) & (limitdown.values>0)] = 1
+                values[(limitup.values>0) & (limitdown.values==0)] = 2
             else:
                 # Read old data
                 if os.path.exists(fbin):
@@ -635,8 +644,8 @@ if __name__=='__main__':
     #tick.tick2mb1(sdate='20180817',edate='20180817')
     mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
-    #mb.to_bin(edate='20190913')
-    mb.to_csv(sdate='20131230',edate='20140102')
+    mb.to_bin(edate='20190919')
+    #mb.to_csv(sdate='20131230',edate='20140102')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
     #mb = MBData('./ini/mb.ini','30')
