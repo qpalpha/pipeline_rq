@@ -590,6 +590,9 @@ class MBData(HFData):
                 values[(limitup.values==0) & (limitdown.values==0) & (volume.values>0)] = 3
                 values[(limitup.values==0) & (limitdown.values>0)] = 1
                 values[(limitup.values>0) & (limitdown.values==0)] = 2
+                # dimnames
+                pdb.set_trace()
+                dates,ids = volume.index,volume.columns
             else:
                 # Read old data
                 if os.path.exists(fbin):
@@ -624,11 +627,13 @@ class MBData(HFData):
                 # Fillna
                 df.fillna(0)
                 values = df.values
+                dates,ids = trade_dates,self.ids
             # rm bin
+            pdb.set_trace()
             os.system('rm {} -rf'.format(fbin))
             print('[{}] removed'.format(fbin))
             # Save bin
-            save_binary_array_3d(fbin,values,trade_dates,self.ids,MB_str)
+            save_binary_array_3d(fbin,values,dates,ids,MB_str)
             t02 = time.time()
             print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
 
@@ -644,7 +649,7 @@ if __name__=='__main__':
     #tick.tick2mb1(sdate='20180817',edate='20180817')
     mb = MBData('./ini/mb.ini','30')
     #mb = MBData('./ini/mb.ini','15')
-    mb.to_bin(edate='20190919')
+    mb.to_bin(edate='20190916')
     #mb.to_csv(sdate='20131230',edate='20140102')
     #mb = MBData('./ini/mb.ini','15')
     #mb.to_csv()
