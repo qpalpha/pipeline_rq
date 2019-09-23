@@ -504,7 +504,7 @@ class MBData(HFData):
         trade_dates = get_dates(sdate,edate)
         dir_mb = os.path.join(self.csv_dir,'ashare',self.sub_dir)
         # Loop trade_dates
-        print('* Make mb tgzs: {} to {}'.format(type,trade_dates[0],trade_dates[-1]))
+        print('* Make mb{} tgzs: {} to {}'.format(self,freq,trade_dates[0],trade_dates[-1]))
         for dt in trade_dates:
             t1 = time.time()
             dir_mb_dt = os.path.join(dir_mb,dt)
@@ -570,7 +570,7 @@ class MBData(HFData):
         return mb
 
     def to_bin(self,sdate='20080101',edate=None):
-        print('* Make whole-package mb bins')
+        print('* Make whole-package mb{} bins'.format(self.freq))
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
@@ -643,7 +643,7 @@ class MBData(HFData):
             print('[{}] saved|{:.2f}s in total'.format(fbin,t02-t01))
 
     def to_month_bin(self,sdate='20080101',edate=None):
-        print('* Make monthly mb bins')
+        print('* Make monthly mb{} bins'.format(self.freq))
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
