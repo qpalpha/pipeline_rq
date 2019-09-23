@@ -283,6 +283,8 @@ class TickData(HFData):
         # Get ids and ids_rq
         ids = self._get_ids_(type)
         # Loop trade_dates
+        print('* Get raw tick data of {} from RQ: {} to {}, {} to {}'.format(type,trade_dates[0],\
+                trade_dates[-1],ids[0],ids[-1]))
         for dt in trade_dates:
             dir_dt = os.path.join(self.raw_dir,self.sub_dir(type,dt),type,dt)
             mkdir(dir_dt)
@@ -311,9 +313,9 @@ class TickData(HFData):
                             d_raw['trading_date'] = d_raw['trading_date'].dt.strftime('%Y%m%d')
                         # Save and tar csv
                         self._zip_(d_raw,dir_dt,ticker)
-                        print('{}|{}|{}'.format(dt,ticker,i))
+                        print('tick|{}|{}|{}|{}'.format(type,dt,ticker,i))
                 else:
-                    print('{}|{}|{}'.format(dt,ticker,'exists'))
+                    print('tick|{}|{}|{}|{}'.format(type,dt,ticker,'exists'))
 
     def _get_ids_(self,type):
         df = self.tickers_dict[type]
@@ -334,6 +336,7 @@ class TickData(HFData):
         if edate is None: edate = self.end_date
         trade_dates = get_dates(sdate,edate)
         # Loop trade_dates
+        print('* Tick->mb1: {} to {}'.format(trade_dates[0],trade_dates[-1]))
         for dt in trade_dates:
             t1 = time.time()
             # Path
@@ -406,7 +409,7 @@ class TickData(HFData):
             self._zip_(caa_df,caa_dir,dt)
             # print
             t2 = time.time()
-            print('{}|{:.2f}s'.format(dt,t2-t1))
+            print('mb1|{}|{:.2f}s'.format(dt,t2-t1))
 
     def _tick2mb1_field_(self,data_tick):
         data = dict()
@@ -501,6 +504,7 @@ class MBData(HFData):
         trade_dates = get_dates(sdate,edate)
         dir_mb = os.path.join(self.csv_dir,'ashare',self.sub_dir)
         # Loop trade_dates
+        print('* Make mb tgzs: {} to {}'.format(type,trade_dates[0],trade_dates[-1]))
         for dt in trade_dates:
             t1 = time.time()
             dir_mb_dt = os.path.join(dir_mb,dt)
@@ -566,6 +570,7 @@ class MBData(HFData):
         return mb
 
     def to_bin(self,sdate='20080101',edate=None):
+        print('* Make whole-package mb bins')
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
@@ -635,9 +640,10 @@ class MBData(HFData):
             # Save bin
             save_binary_array_3d(fbin,values,dates,ids,MB_str)
             t02 = time.time()
-            print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
+            print('[{}] saved|{:.2f}s in total'.format(fbin,t02-t01))
 
     def to_month_bin(self,sdate='20080101',edate=None):
+        print('* Make monthly mb bins')
         # Min bar in string format
         MB_str = [str(b) for b in self.MB]
         # Dates
@@ -719,7 +725,7 @@ class MBData(HFData):
                 # Save bin
                 save_binary_array_3d(fbin,values,dates,ids,MB_str)
                 t02 = time.time()
-                print('---------- [{}] saved|{:.2f}s in total ----------'.format(fbin,t02-t01))
+                print('[{}] saved|{:.2f}s in total'.format(fbin,t02-t01))
 
     def _month_to_do_(self,dir_bin,field_bin,month):
         month_today = today()[:6]
